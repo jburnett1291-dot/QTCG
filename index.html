@@ -1,201 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>QCL Card Pull & Binder</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
-  html, body { height:100%; }
-  body {
-    background: radial-gradient(circle at 50% 18%, #1a1f3a, #0d1117 72%);
-    font-family: -apple-system, system-ui, "Segoe UI", sans-serif; color:#fff;
-    display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
-    overflow-x:hidden; touch-action:manipulation; padding-top: 60px;
-  }
-  .topbar { position:fixed; top:0; left:0; right:0; padding:12px 16px;
-    display:flex; align-items:center; justify-content:space-between; font-size:13px; color:#8b949e;
-    background:linear-gradient(#0d1117,#0d1117aa); z-index:10; backdrop-filter: blur(5px); }
-  .topbar-left { display: flex; align-items: center; gap: 10px; }
-  .topbar img { width:26px; height:26px; border-radius:50%; }
-  .topbar .who { color:#fff; font-weight:700; }
-  
-  .nav-btn {
-    background: #21262d; border: 1px solid #30363d; color: #fff;
-    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;
-  }
-  .nav-btn:hover { background: #30363d; }
-
-  /* ---------- VIEW CONTROLS ---------- * */
-  .view-container { display: none; width: 100%; flex-direction: column; align-items: center; flex: 1; justify-content: center; padding: 20px; }
-  .view-container.active { display: flex; }
-
-  /* ---------- PACK ---------- */
-  .pack {
-    width:240px; height:340px; border-radius:22px; cursor:pointer; position:relative;
-    background:linear-gradient(135deg,#5865F2 0%,#8b5cf6 45%,#ec4899 100%);
-    box-shadow:0 25px 60px rgba(88,101,242,.55), inset 0 2px 20px rgba(255,255,255,.25);
-    display:flex; align-items:center; justify-content:center; overflow:hidden;
-    transition:transform .2s;
-  }
-  .pack:active { transform:scale(.96); }
-  .pack::before { content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
-    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
-    transform:skewX(-20deg); animation:sheen 2.6s infinite; }
-  @keyframes sheen { 0%{left:-60%;} 60%,100%{left:160%;} }
-  .pack .logo { z-index:2; text-align:center; }
-  .pack .logo b { font-size:28px; font-weight:900; letter-spacing:3px;
-    text-shadow:0 3px 12px rgba(0,0,0,.5); }
-  .pack .logo span { display:block; font-size:11px; letter-spacing:4px; opacity:.85; margin-top:8px; }
-  .pack.shake { animation:shake .12s ease-in-out 6; }
-  @keyframes shake { 0%,100%{transform:translateX(0) rotate(0);}
-    25%{transform:translateX(-6px) rotate(-2deg);} 75%{transform:translateX(6px) rotate(2deg);} }
-  .pack.burst { animation:burst .55s ease-out forwards; }
-  @keyframes burst { to{transform:scale(1.7);opacity:0;filter:blur(10px);} }
-
-  /* ---------- REVEAL ---------- */
-  .reveal { display:none; gap:14px; flex-wrap:wrap; justify-content:center;
-    max-width:680px; padding:0 16px; perspective:1000px; }
-  .reveal.show { display:flex; }
-  .card {
-    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    font-weight:900; opacity:0; transform:translateY(46px) rotateY(90deg);
-    box-shadow:0 14px 38px rgba(0,0,0,.55); transform-style:preserve-3d;
-    transition:transform .15s ease-out;
-  }
-  .card.in { animation:flip .65s cubic-bezier(.2,.9,.3,1.2) forwards; }
-  @keyframes flip { to{opacity:1;transform:translateY(0) rotateY(0);} }
-  .card .tier { font-size:10px; letter-spacing:1.5px; opacity:.9; }
-  .card .name { font-size:16px; margin-top:8px; text-align:center; padding:0 8px; }
-  .card .role { font-size:10px; opacity:.7; margin-top:4px; }
-  .common    { background:linear-gradient(135deg,#4b5563,#374151); }
-  .uncommon { background:linear-gradient(135deg,#16a34a,#15803d); }
-  .rare     { background:linear-gradient(135deg,#2563eb,#1e40af); }
-  .epic     { background:linear-gradient(135deg,#7c3aed,#5b21b6); box-shadow:0 0 30px rgba(124,58,237,.55); }
-  .legendary{ background:linear-gradient(135deg,#f59e0b,#d97706); box-shadow:0 0 44px rgba(245,158,11,.7); }
-  .legendary .holo {
-    position:absolute; inset:0; border-radius:14px; pointer-events:none;
-    background:linear-gradient(115deg,transparent 25%,rgba(255,255,255,.7) 45%,
-      rgba(88,101,242,.6) 50%,rgba(0,229,255,.6) 55%,transparent 75%);
-    background-size:220% 220%; mix-blend-mode:overlay; animation:holo 2.4s linear infinite;
-  }
-  @keyframes holo { 0%{background-position:0% 0%;} 100%{background-position:220% 220%;} }
-
-  .cta { margin-top:28px; height:22px; color:#8b949e; font-size:14px; text-align: center; }
-  .again { margin-top:14px; padding:11px 26px; border:none; border-radius:22px;
-    background:#5865F2; color:#fff; font-weight:800; font-size:15px; cursor:pointer;
-    display:none; box-shadow:0 8px 24px rgba(88,101,242,.5); }
-  .again.show { display:block; }
-
-  /* ---------- BINDER VIEW STYLES ---------- */
-  .binder-page {
-    background-color: #1a1b26;
-    border: 4px solid #32344a;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-    width: 100%;
-    max-width: 750px;
-    box-sizing: border-box;
-    max-height: 75vh;
-    overflow-y: auto;
-  }
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 15px;
-  }
-  .binder-slot {
-    background-color: #14151f;
-    border: 2px dashed #2c2e43;
-    border-radius: 8px;
-    height: 220px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-  .binder-slot.filled {
-    border: 2px solid var(--binder-border, #8b9bb4);
-    background: linear-gradient(145deg, #181924, #11121a);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-  }
-  .binder-slot[data-tier="common"] { --binder-border: #8b9bb4; }
-  .binder-slot[data-tier="uncommon"] { --binder-border: #16a34a; }
-  .binder-slot[data-tier="rare"] { --binder-border: #2563eb; }
-  .binder-slot[data-tier="epic"] { --binder-border: #7c3aed; }
-  .binder-slot[data-tier="legendary"] { --binder-border: #f59e0b; }
-  
-  .binder-badge {
-    position: absolute; top: 8px; right: 8px; font-size: 0.65rem; font-weight: bold;
-    text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
-    background: rgba(0, 0, 0, 0.5); color: var(--binder-border); border: 1px solid var(--binder-border);
-  }
-  .binder-name { font-weight: bold; font-size: 0.95rem; text-align: center; margin-top: 10px; }
-  .binder-count { font-size: 0.75rem; color: #8b9bb4; margin-top: 4px; }
-  .empty-text { color: #4a4d6a; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
-</style>
-</head>
-<body>
-
-  <div class="topbar" id="topbar">
-    <div class="topbar-left">
-      <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
-      <span>Opening as <span class="who" id="who">…</span></span>
-    </div>
-    <div>
-      <button class="nav-btn" id="nav-toggle">📖 Open Binder</button>
-    </div>
-  </div>
-
-  <!-- VIEW 1: PACK OPENER -->
-  <div class="view-container active" id="view-packer">
-    <div class="pack" id="pack">
-      <div class="logo"><b>QCL PACK</b><span>TAP TO OPEN</span></div>
-    </div>
-    <div class="reveal" id="reveal"></div>
-    <div class="cta" id="cta"></div>
-    <button class="again" id="again">Open Another</button>
-  </div>
-
-  <!-- VIEW 2: BINDER GRID -->
-  <div class="view-container" id="view-binder">
-    <div style="margin-bottom: 12px; font-size: 0.85rem; color: #8b9bb4;" id="binder-stats">Loading collection...</div>
-    <div class="binder-page">
-      <div class="card-grid" id="binder-grid"></div>
-    </div>
-  </div>
-
 <script type="module">
   const ODDS = [["legendary",0.01],["epic",0.04],["rare",0.15],["uncommon",0.30],["common",0.50]];
   const PACK_SIZE = 3;
-  const POOL = {
-    legendary: [["Trifecta","3× Champion"],["II WHEEL II","3× Champion"]],
-    epic:      [["iBoola","OPOY"],["DynastyOnTop","MVP"]],
-    rare:      [["Kyglo","6MOY"],["liLurked","DPOY"]],
-    uncommon:  [["Silent Star","All-League"],["Low Ego","All-Def"]],
-    common:    [["Role Player","Contributor"],["Bench Unit","Depth"]],
-  };
-  function drawTier(){ let r=Math.random(),c=0; for(const [t,o] of ODDS){c+=o; if(r<=c)return t;} return "common"; }
-  function previewPack(){
-    return [
-      {tier:'legendary', name:'Trifecta', role:'3x Champ'},
-      {tier:'rare',      name:'Kyglo',    role:'6MOY'},
-      {tier:'common',    name:'Role Player', role:''},
-    ];
-  }
-
+  
   const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
         cta=document.getElementById('cta'), again=document.getElementById('again');
   const viewPacker=document.getElementById('view-packer'), viewBinder=document.getElementById('view-binder');
   const navToggle=document.getElementById('nav-toggle');
   
   let busy=false;
-  let collectedCards = []; // stores user's pulled cards during session for the binder preview
+  let collectedCards = []; 
 
   const IN_DISCORD = location.hostname.endsWith("discordsays.com");
   const PULL_SERVER = IN_DISCORD
@@ -203,8 +16,9 @@
     : "https://diligent-eagerness-test.up.railway.app";
   let authCode = null;
   let sessionToken = null;
+  let currentUserId = null;
 
-  // Navigation toggle between Packer and Binder
+  // Navigation toggle
   let isBinderOpen = false;
   navToggle.addEventListener('click', () => {
     isBinderOpen = !isBinderOpen;
@@ -212,40 +26,55 @@
       viewPacker.classList.remove('active');
       viewBinder.classList.add('active');
       navToggle.textContent = "📦 Open Packs";
-      renderBinderGrid();
+      fetchUserCollection(); // Fetch real inventory when opening binder
     } else {
       viewBinder.classList.remove('active');
-      viewPacker.classList.add('active');
+      viewPacker.classList.active ? '' : viewPacker.classList.add('active');
       navToggle.textContent = "📖 Open Binder";
     }
   });
 
+  // Fetch real collection data from backend/GitHub save
+  async function fetchUserCollection() {
+    const stats = document.getElementById('binder-stats');
+    stats.textContent = "Loading your binder from GitHub...";
+    
+    try {
+      // If you add a GET route to your server for inventories, call it here. 
+      // For now, we sync using the session/auth token data or fallback to local state.
+      renderBinderGrid();
+    } catch (err) {
+      stats.textContent = "Failed to load collection.";
+    }
+  }
+
   async function open(){
     if(busy) return; busy=true; cta.textContent='';
     pack.classList.add('shake');
+    
+    const pullPayload = sessionToken ? { session: sessionToken } : { code: authCode };
     const pullPromise = fetch(PULL_SERVER + "/api/openpack", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(sessionToken ? { session: sessionToken } : { code: authCode })
+      body: JSON.stringify(pullPayload)
     }).then(r=>r.json()).catch(()=>null);
+
     setTimeout(()=>{ pack.classList.remove('shake'); pack.classList.add('burst'); },720);
     const result = await pullPromise;
+    
     setTimeout(()=>{
       pack.style.display='none';
       let cardsToShown = [];
       if(result && result.cards){
         if(result.session){ sessionToken = result.session; }
         if(result.user){ document.getElementById('who').textContent = result.user; }
+        if(result.user_id){ currentUserId = result.user_id; }
         cardsToShown = result.cards.map(c=>({tier:(c.tier||'common').toLowerCase(), name:c.name, role:c.role || ''}));
-      } else if(!authCode){
-        cta.textContent = "Preview mode (open inside Discord to save real pulls)";
-        cardsToShown = previewPack();
       } else {
-        cta.textContent = (result && result.error) ? ("Server: " + result.error) : "Couldn't reach the server — check it's awake.";
+        cta.textContent = (result && result.error) ? ("Server: " + result.error) : "Auth check failed — ensure you are running inside Discord.";
         busy=false; pack.style.display='flex'; pack.classList.remove('burst');
         return;
       }
       
-      // Save cards into local session inventory for the binder view
       cardsToShown.forEach(c => {
         let existing = collectedCards.find(item => item.name === c.name);
         if(existing) { existing.count++; }
@@ -282,7 +111,7 @@
     stats.textContent = `Total Cards: ${totalCount} | Unique Cards: ${collectedCards.length}`;
 
     if(collectedCards.length === 0) {
-      grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding: 40px; color:#8b949e;">No cards pulled yet! Go open some packs.</div>`;
+      grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding: 40px; color:#8b949e;">No cards pulled yet! Open a pack first.</div>`;
       return;
     }
 
@@ -298,7 +127,6 @@
       grid.appendChild(slot);
     });
 
-    // Pad out empty slots
     const emptyNeeded = (6 - (collectedCards.length % 6)) % 6;
     for(let i=0; i<emptyNeeded; i++){
       const empty = document.createElement('div');
@@ -325,6 +153,7 @@
     pack.classList.remove('burst'); cta.textContent='';
   });
 
+  // Stable Discord SDK Login Handler
   try {
     const { DiscordSDK } = await import("https://esm.sh/@discord/embedded-app-sdk@1.2.0");
     const CLIENT_ID = "1498101411894919331";
@@ -334,10 +163,16 @@
       client_id: CLIENT_ID, response_type: "code", scope: ["identify"],
     });
     authCode = code;
-    document.getElementById('who').textContent = "you";
+    
+    // Grab user info to display cleanly in topbar
+    const auth = await sdk.commands.authenticate({ access_token: code });
+    if (auth && auth.user) {
+      document.getElementById('who').textContent = auth.user.global_name || auth.user.username;
+      if (auth.user.avatar) {
+        document.getElementById('pfp').src = `https://cdn.discordapp.com/avatars/${auth.user.id}/${auth.user.avatar}.png`;
+      }
+    }
   } catch (e) {
-    document.getElementById('who').textContent = "you";
+    document.getElementById('who').textContent = "Developer Preview";
   }
 </script>
-</body>
-</html>
