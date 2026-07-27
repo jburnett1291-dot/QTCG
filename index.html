@@ -224,9 +224,13 @@
         // Tally up duplicates so they show as "x2", "x3", etc.
         let grouped = [];
         data.cards.forEach(c => {
-           let existing = grouped.find(item => item.name === c.name);
+           // Fallback check: if the server saved an old string, convert it cleanly
+           let cardName = typeof c === 'string' ? c : c.name;
+           let cardTier = typeof c === 'string' ? 'common' : (c.tier || 'common').toLowerCase();
+           
+           let existing = grouped.find(item => item.name === cardName);
            if(existing) { existing.count++; }
-           else { grouped.push({ tier: (c.tier||'common').toLowerCase(), name: c.name, count: 1 }); }
+           else { grouped.push({ tier: cardTier, name: cardName, count: 1 }); }
         });
         collectedCards = grouped; // Update the local screen with the server's truth
       }
