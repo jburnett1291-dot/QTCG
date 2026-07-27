@@ -10,8 +10,8 @@ Real pack pulls for the Discord Activity:
 
 ENV VARS (set these in Railway -> Variables):
   DISCORD_CLIENT_ID       = 1498101411894919331
-  DISCORD_CLIENT_SECRET   = mTCqwuGas0p0n78wzPLnO-7GDiEchnpJ
-  GITHUB_TOKEN            = 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
+  DISCORD_CLIENT_SECRET   = <Developer Portal -> OAuth2>
+  GITHUB_TOKEN            = <same token the bot uses, repo scope>
   GITHUB_REPO            = jburnett1291-dot/SPAM_HUB
   SAVE_PATH             = fantasy_save.json      (optional, this is default)
   POOL_PATH             = fantasy_market.json    (optional; where names+rarity live)
@@ -30,7 +30,7 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
-SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")
+SAVE_PATH = os.environ.get("SAVE_PATH", "activity_pulls.json")  # pull-server owns THIS file only
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -164,16 +164,17 @@ async def open_pack(request):
 
         pulled = _draw(names, rarity)
 
-        # mint into the shared save on GitHub
-        save, sha = await _gh_get(session, SAVE_PATH)
-        users = save.setdefault("users", {})
-        u = users.setdefault(uid, {"cards": [], "coins": 0})
-        u.setdefault("cards", []).extend(pulled)
-        mint = save.setdefault("mint", {})
-        for n in pulled:
-            mint[n] = int(mint.get(n, 0)) + 1
-        ok = await _gh_put(session, SAVE_PATH, save, sha,
-                           f"pull: {user.get('username')} +{len(pulled)}")
+        # mint into activity_pulls.json (ONLY the pull-server writes this file,
+        # so there are no races with the bot). Shape: {uid: {"cards":[], "count":N}}
+        pulls, sha = await _gh_get(session, SAVE_PATH)
+        if not isinstance(pulls, dict):
+            pulls = {}
+        entry = pulls.setdefault(uid, {"name": "", "cards": [], "count": 0})
+        entry["name"] = user.get("global_name") or user.get("username")
+        entry["cards"].extend(pulled)
+        entry["count"] = int(entry.get("count", 0)) + len(pulled)
+        ok = await _gh_put(session, SAVE_PATH, pulls, sha,
+                           f"activity pull: {entry['name']} +{len(pulled)}")
         if not ok:
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
