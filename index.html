@@ -133,6 +133,7 @@
     ? "/.proxy/railway"
     : "https://diligent-eagerness-test.up.railway.app";
   let authCode = null;   // set by the Discord SDK below
+  let sessionToken = null;  // reusable session after first pull
 
   async function open(){
     if(busy) return; busy=true; cta.textContent='';
@@ -140,13 +141,16 @@
     // ask the SERVER for the real pull (anti-cheat) while the pack shakes
     const pullPromise = fetch(PULL_SERVER + "/api/openpack", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ code: authCode })
+      // first pull sends the one-time code; after that we reuse the session
+      body: JSON.stringify(sessionToken ? { session: sessionToken }
+                                        : { code: authCode })
     }).then(r=>r.json()).catch(()=>null);
     setTimeout(()=>{ pack.classList.remove('shake'); pack.classList.add('burst'); },720);
     const result = await pullPromise;
     setTimeout(()=>{
       pack.style.display='none';
       if(result && result.cards){
+        if(result.session){ sessionToken = result.session; }
         if(result.user){ document.getElementById('who').textContent = result.user; }
         show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
                                    name:c.name, role:''})));
