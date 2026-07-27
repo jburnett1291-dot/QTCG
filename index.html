@@ -125,7 +125,13 @@
         cta=document.getElementById('cta'), again=document.getElementById('again');
   let busy=false;
 
-  const PULL_SERVER = "https://diligent-eagerness-test.up.railway.app";
+  // Inside Discord, calls MUST go through the proxy path mapped in the
+  // Developer Portal (PREFIX /railway -> your railway domain). In a plain
+  // browser we fall back to the direct URL (preview only).
+  const IN_DISCORD = location.hostname.endsWith("discordsays.com");
+  const PULL_SERVER = IN_DISCORD
+    ? "/.proxy/railway"
+    : "https://diligent-eagerness-test.up.railway.app";
   let authCode = null;   // set by the Discord SDK below
 
   async function open(){
