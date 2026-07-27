@@ -188,10 +188,61 @@ async def health(request):
                                     "repo": GH_REPO}))
 
 
+
+async def diag(request):
+    """Diagnostic: tests each step and reports exactly what works/fails.
+    Open /api/diag in a browser to see where the pull flow breaks."""
+    out = {"env": {}, "steps": {}}
+    out["env"]["has_client_id"] = bool(CLIENT_ID)
+    out["env"]["has_client_secret"] = bool(CLIENT_SECRET)
+    out["env"]["has_github_token"] = bool(GH_TOKEN)
+    out["env"]["repo"] = GH_REPO
+    out["env"]["pool_path"] = POOL_PATH
+    out["env"]["save_path"] = SAVE_PATH
+    async with aiohttp.ClientSession() as session:
+        # 1. read pool
+        try:
+            pool, _ = await _gh_get(session, POOL_PATH)
+            names = []
+            if isinstance(pool, dict) and pool.get("names"):
+                names = pool["names"]
+            elif isinstance(pool, dict) and pool.get("cards"):
+                names = list(pool["cards"].keys())
+            elif isinstance(pool, dict):
+                for n, v in pool.items():
+                    if isinstance(v, dict) and ("tier" in v or "cls" in v or "legend" in v):
+                        names.append(n)
+            out["steps"]["read_pool"] = {"ok": bool(names), "player_count": len(names),
+                                          "sample": names[:5]}
+        except Exception as e:
+            out["steps"]["read_pool"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        # 2. read save
+        try:
+            save, sha = await _gh_get(session, SAVE_PATH)
+            out["steps"]["read_save"] = {"ok": True, "exists": sha is not None,
+                                          "users": len(save.get("users", {}))}
+        except Exception as e:
+            out["steps"]["read_save"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        # 3. WRITE test (the usual culprit) — writes a tiny diag file
+        try:
+            probe, sha = await _gh_get(session, "pull_server_probe.json")
+            ok = await _gh_put(session, "pull_server_probe.json",
+                               {"last_diag": time.time()}, sha, "pull-server write test")
+            out["steps"]["write_repo"] = {"ok": ok,
+                "note": "if false, the GITHUB_TOKEN can't WRITE (needs repo scope + push access)"}
+        except Exception as e:
+            out["steps"]["write_repo"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    out["verdict"] = ("ALL GOOD — pulls should save"
+                      if all(s.get("ok") for s in out["steps"].values())
+                      else "SOMETHING FAILED — see which step ok=false above")
+    return _cors(web.json_response(out, status=200))
+
+
 app = web.Application()
 app.router.add_post("/api/openpack", open_pack)
 app.router.add_options("/api/openpack", open_pack)
 app.router.add_get("/api/health", health)
+app.router.add_get("/api/diag", diag)
 app.router.add_get("/", health)
 
 if __name__ == "__main__":
