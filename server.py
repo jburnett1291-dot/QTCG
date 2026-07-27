@@ -30,7 +30,7 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
-SAVE_PATH = os.environ.get("SAVE_PATH", "activity_pulls.json")  # pull-server owns THIS file only
+SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # pull-server owns THIS file only
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
 
