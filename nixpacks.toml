@@ -1,10 +1,18 @@
 # Railway/Nixpacks build config — avoids the mise attestation error by using
 # nixpacks' own python instead of a pinned runtime.txt version.
+
 [phases.setup]
-nixPkgs = ["python312", "gcc"]
+# Add pip explicitly alongside python and gcc
+nixPkgs = ["python312", "python312Packages.pip", "gcc"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+# Create a virtual environment and install dependencies inside it
+# This avoids Python 3.12's strict global install blockage
+cmds = [
+    "python -m venv /opt/venv",
+    "/opt/venv/bin/python -m pip install -r requirements.txt"
+]
 
 [start]
-cmd = "python server.py"
+# Execute the server using the virtual environment's Python binary
+cmd = "/opt/venv/bin/python server.py"
