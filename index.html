@@ -145,7 +145,7 @@
   <div class="topbar" id="topbar">
     <div class="topbar-left">
       <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
-      <span>Opening as <span class="who" id="who">…</span></span>
+      <span>Opening as <span class="who" id="who">...</span></span>
     </div>
     <div>
       <button class="nav-btn" id="nav-toggle">📖 Open Binder</button>
@@ -171,9 +171,6 @@
   </div>
 
 <script type="module">
-  const ODDS = [["legendary",0.01],["epic",0.04],["rare",0.15],["uncommon",0.30],["common",0.50]];
-  const PACK_SIZE = 3;
-  
   const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
         cta=document.getElementById('cta'), again=document.getElementById('again');
   const viewPacker=document.getElementById('view-packer'), viewBinder=document.getElementById('view-binder');
@@ -208,8 +205,36 @@
 
   async function fetchUserCollection() {
     const stats = document.getElementById('binder-stats');
-    stats.textContent = "Loading your binder...";
-    renderBinderGrid();
+    
+    // Check if the user ID exists before requesting the server
+    if (!currentUserId) {
+      stats.textContent = "Loading... (Make sure you are in Discord)";
+      renderBinderGrid();
+      return;
+    }
+
+    stats.textContent = "Syncing your binder from the QCL server...";
+    
+    try {
+      // Ask the python backend for the specific user's saved data
+      const res = await fetch(`${PULL_SERVER}/api/collection?user_id=${currentUserId}`);
+      const data = await res.json();
+      
+      if (data.cards) {
+        // Tally up duplicates so they show as "x2", "x3", etc.
+        let grouped = [];
+        data.cards.forEach(c => {
+           let existing = grouped.find(item => item.name === c.name);
+           if(existing) { existing.count++; }
+           else { grouped.push({ tier: (c.tier||'common').toLowerCase(), name: c.name, count: 1 }); }
+        });
+        collectedCards = grouped; // Update the local screen with the server's truth
+      }
+      renderBinderGrid();
+    } catch (err) {
+      stats.textContent = "Failed to sync collection.";
+      renderBinderGrid();
+    }
   }
 
   async function open(){
@@ -234,7 +259,6 @@
         if(result.user_id){ currentUserId = result.user_id; }
         cardsToShown = result.cards.map(c=>({tier:(c.tier||'common').toLowerCase(), name:c.name, role:c.role || ''}));
       } else {
-        // Fallback for browser preview so it doesn't crash outside Discord
         cta.textContent = (result && result.error) ? ("Server: " + result.error) : "Preview Mode (Open inside Discord for real pulls)";
         cardsToShown = [
           {tier:'legendary', name:'Trifecta', role:'3x Champ'},
@@ -243,6 +267,7 @@
         ];
       }
       
+      // Update local storage so binder updates without needing a refresh
       cardsToShown.forEach(c => {
         let existing = collectedCards.find(item => item.name === c.name);
         if(existing) { existing.count++; }
@@ -321,19 +346,29 @@
     pack.classList.remove('burst'); cta.textContent='';
   });
 
-  // Stable Discord SDK Login Handler
+  // Discord SDK Login Handler - Grabs user info immediately
   try {
     const { DiscordSDK } = await import("https://esm.sh/@discord/embedded-app-sdk@1.2.0");
     const CLIENT_ID = "1498101411894919331";
     const sdk = new DiscordSDK(CLIENT_ID);
     await sdk.ready();
+    
     const { code } = await sdk.commands.authorize({
       client_id: CLIENT_ID, response_type: "code", scope: ["identify"],
     });
     authCode = code;
     
-    // Default to "you" until the server processes the code on the first pull
-    document.getElementById('who').textContent = "you";
+    // Explicitly authenticate to pull User ID for the binder
+    const auth = await sdk.commands.authenticate({ access_token: code });
+    if (auth && auth.user) {
+      currentUserId = auth.user.id;
+      document.getElementById('who').textContent = auth.user.global_name || auth.user.username;
+      if (auth.user.avatar) {
+        document.getElementById('pfp').src = `https://cdn.discordapp.com/avatars/${auth.user.id}/${auth.user.avatar}.png`;
+      }
+    } else {
+      document.getElementById('who').textContent = "you";
+    }
   } catch (e) {
     document.getElementById('who').textContent = "Developer Preview";
     console.error("Discord SDK Error:", e);
