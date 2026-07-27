@@ -39,6 +39,38 @@ ODDS = [("Common", 0.50), ("Uncommon", 0.30), ("Rare", 0.15),
         ("Epic", 0.04), ("Legendary", 0.01)]
 PACK_SIZE = 3
 
+import hmac as _hmac
+import hashlib as _hashlib
+import base64 as _b64
+
+_SESSION_SECRET = os.environ.get("QCL_SIGNING_SECRET", CLIENT_SECRET or "change-me")
+
+
+def _make_session(uid, name, avatar):
+    payload = _b64.urlsafe_b64encode(
+        json.dumps({"id": uid, "name": name, "avatar": avatar,
+                    "exp": time.time() + 60*60*6}).encode()).decode().rstrip("=")
+    sig = _hmac.new(_SESSION_SECRET.encode(), payload.encode(),
+                    _hashlib.sha256).hexdigest()[:16]
+    return f"{payload}.{sig}"
+
+
+def _read_session(tok):
+    try:
+        payload, sig = tok.split(".", 1)
+        good = _hmac.new(_SESSION_SECRET.encode(), payload.encode(),
+                         _hashlib.sha256).hexdigest()[:16]
+        if not _hmac.compare_digest(sig, good):
+            return None
+        pad = "=" * (-len(payload) % 4)
+        data = json.loads(_b64.urlsafe_b64decode(payload + pad))
+        if data.get("exp", 0) < time.time():
+            return None
+        return data
+    except Exception:
+        return None
+
+
 _COOLDOWN = {}
 _COOLDOWN_SECS = 2
 _GH_API = "https://api.github.com"
@@ -127,14 +159,25 @@ async def open_pack(request):
     except Exception:
         return _cors(web.json_response({"error": "bad request"}, status=400))
     code = body.get("code")
-    if not code:
-        return _cors(web.json_response({"error": "no code"}, status=400))
+    session_tok = body.get("session")
 
     async with aiohttp.ClientSession() as session:
-        user = await _verify_user(session, code)
-        if not user:
-            return _cors(web.json_response({"error": "auth failed"}, status=401))
-        uid = str(user.get("id"))
+        # returning player: reuse their signed session (no one-time code needed)
+        sess = _read_session(session_tok) if session_tok else None
+        if sess:
+            uid = str(sess["id"])
+            user = {"id": uid, "global_name": sess.get("name"),
+                    "username": sess.get("name"), "avatar": sess.get("avatar")}
+            new_session = None  # already have one
+        elif code:
+            user = await _verify_user(session, code)
+            if not user:
+                return _cors(web.json_response({"error": "auth failed"}, status=401))
+            uid = str(user.get("id"))
+            new_session = _make_session(uid, user.get("global_name") or user.get("username"),
+                                        user.get("avatar"))
+        else:
+            return _cors(web.json_response({"error": "no code or session"}, status=400))
 
         now = time.time()
         if now - _COOLDOWN.get(uid, 0) < _COOLDOWN_SECS:
@@ -179,9 +222,11 @@ async def open_pack(request):
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
         cards = [{"name": n, "tier": rarity.get(n, "Common")} for n in pulled]
-        return _cors(web.json_response({
-            "user": user.get("global_name") or user.get("username"),
-            "avatar": user.get("avatar"), "user_id": uid, "cards": cards}))
+        resp = {"user": user.get("global_name") or user.get("username"),
+                "avatar": user.get("avatar"), "user_id": uid, "cards": cards}
+        if new_session:
+            resp["session"] = new_session
+        return _cors(web.json_response(resp))
 
 
 async def health(request):
