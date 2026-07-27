@@ -10,8 +10,8 @@ Real pack pulls for the Discord Activity:
 
 ENV VARS (set these in Railway -> Variables):
   DISCORD_CLIENT_ID       = 1498101411894919331
-  DISCORD_CLIENT_SECRET   = mTCqwuGas0p0n78wzPLnO-7GDiEchnpJ
-  GITHUB_TOKEN            = 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
+  DISCORD_CLIENT_SECRET   = <Developer Portal -> OAuth2>
+  GITHUB_TOKEN            = <same token the bot uses, repo scope>
   GITHUB_REPO            = jburnett1291-dot/SPAM_HUB
   SAVE_PATH             = fantasy_save.json      (optional, this is default)
   POOL_PATH             = fantasy_market.json    (optional; where names+rarity live)
@@ -30,7 +30,7 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
-SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # pull-server owns THIS file only
+SAVE_PATH = os.environ.get("SAVE_PATH", "activity_pulls.json")  # pull-server owns THIS file only
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
 
