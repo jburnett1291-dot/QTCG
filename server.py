@@ -185,21 +185,23 @@ async def open_pack(request):
             pulls = {}
         entry = pulls.setdefault(uid, {"name": "", "cards": [], "count": 0})
         entry["name"] = user.get("global_name") or user.get("username")
-        entry["cards"].extend(pulled)
+        
+        # Create the full card objects FIRST, then save them to the JSON
+        cards = [{"name": n, "tier": rarity.get(n, "Common")} for n in pulled]
+        entry["cards"].extend(cards)
+        
         entry["count"] = int(entry.get("count", 0)) + len(pulled)
         ok = await _gh_put(session, SAVE_PATH, pulls, sha,
                            f"activity pull: {entry['name']} +{len(pulled)}")
         if not ok:
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
-        cards = [{"name": n, "tier": rarity.get(n, "Common")} for n in pulled]
         resp = {"user": user.get("global_name") or user.get("username"),
                 "avatar": user.get("avatar"), "user_id": uid, "cards": cards}
         if new_session:
             resp["session"] = new_session
         return _cors(web.json_response(resp))
 
-# --- NEW ROUTE: Fetch the saved collection for a user ---
 async def get_collection(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
@@ -269,11 +271,8 @@ async def diag(request):
 app = web.Application()
 app.router.add_post("/api/openpack", open_pack)
 app.router.add_options("/api/openpack", open_pack)
-
-# --- Register the new GET collection route ---
 app.router.add_get("/api/collection", get_collection)
 app.router.add_options("/api/collection", get_collection)
-
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/", health)
