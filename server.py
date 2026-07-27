@@ -11,7 +11,7 @@ Real pack pulls for the Discord Activity:
 ENV VARS (set these in Railway -> Variables):
   DISCORD_CLIENT_ID       = 1498101411894919331
   DISCORD_CLIENT_SECRET   = mTCqwuGas0p0n78wzPLnO-7GDiEchnpJ
-  GITHUB_TOKEN            = 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
+  GITHUB_TOKEN            = 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
   GITHUB_REPO            = jburnett1291-dot/SPAM_HUB
   SAVE_PATH             = fantasy_save.json      (optional, this is default)
   POOL_PATH             = fantasy_market.json    (optional; where names+rarity live)
