@@ -105,6 +105,15 @@
     common:    [["Role Player","Contributor"],["Bench Unit","Depth"]],
   };
   function drawTier(){ let r=Math.random(),c=0; for(const [t,o] of ODDS){c+=o; if(r<=c)return t;} return "common"; }
+  function previewPack(){
+    // browser-only demo pull so you can see the animation without Discord
+    const demo = [
+      {tier:'legendary', name:'Trifecta', role:'3x Champ'},
+      {tier:'rare',      name:'Kyglo',    role:'6MOY'},
+      {tier:'common',    name:'Role Player', role:''},
+    ];
+    return demo;
+  }
   function drawPack(){
     const out=[];
     for(let i=0;i<PACK_SIZE;i++){ const t=drawTier(); const b=POOL[t];
@@ -135,9 +144,15 @@
         if(result.user){ document.getElementById('who').textContent = result.user; }
         show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
                                    name:c.name, role:''})));
+      } else if(!authCode){
+        // no Discord code = running in a browser, not inside Discord.
+        // show a PREVIEW pull so you can see the animation anywhere.
+        cta.textContent = "Preview mode (open inside Discord to save real pulls)";
+        show(previewPack());
       } else {
-        cta.textContent = (result && result.error) ? result.error
-                          : "Couldn't reach the server — try again.";
+        cta.textContent = (result && result.error)
+          ? ("Server: " + result.error)
+          : "Couldn't reach the server — check it's awake.";
         busy=false; pack.style.display='flex'; pack.classList.remove('burst');
       }
     },1240);
