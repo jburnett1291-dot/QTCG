@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QCL Card Pull</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
+      user-select:none; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(circle at 50% 18%, #1a1f3a, #0d1117 72%);
+    font-family: -apple-system, system-ui, "Segoe UI", sans-serif; color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:manipulation;
+  }
+  .topbar { position:fixed; top:0; left:0; right:0; padding:12px 16px;
+    display:flex; align-items:center; gap:10px; font-size:13px; color:#8b949e;
+    background:linear-gradient(#0d1117,transparent); z-index:10; }
+  .topbar img { width:26px; height:26px; border-radius:50%; }
+  .topbar .who { color:#fff; font-weight:700; }
+
+  /* ---------- PACK ---------- */
+  .pack {
+    width:240px; height:340px; border-radius:22px; cursor:pointer; position:relative;
+    background:linear-gradient(135deg,#5865F2 0%,#8b5cf6 45%,#ec4899 100%);
+    box-shadow:0 25px 60px rgba(88,101,242,.55), inset 0 2px 20px rgba(255,255,255,.25);
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+    transition:transform .2s;
+  }
+  .pack:active { transform:scale(.96); }
+  .pack::before { content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+    transform:skewX(-20deg); animation:sheen 2.6s infinite; }
+  @keyframes sheen { 0%{left:-60%;} 60%,100%{left:160%;} }
+  .pack .logo { z-index:2; text-align:center; }
+  .pack .logo b { font-size:28px; font-weight:900; letter-spacing:3px;
+    text-shadow:0 3px 12px rgba(0,0,0,.5); }
+  .pack .logo span { display:block; font-size:11px; letter-spacing:4px; opacity:.85; margin-top:8px; }
+  .pack.shake { animation:shake .12s ease-in-out 6; }
+  @keyframes shake { 0%,100%{transform:translateX(0) rotate(0);}
+    25%{transform:translateX(-6px) rotate(-2deg);} 75%{transform:translateX(6px) rotate(2deg);} }
+  .pack.burst { animation:burst .55s ease-out forwards; }
+  @keyframes burst { to{transform:scale(1.7);opacity:0;filter:blur(10px);} }
+
+  /* ---------- REVEAL ---------- */
+  .reveal { display:none; gap:14px; flex-wrap:wrap; justify-content:center;
+    max-width:680px; padding:0 16px; perspective:1000px; }
+  .reveal.show { display:flex; }
+  .card {
+    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-weight:900; opacity:0; transform:translateY(46px) rotateY(90deg);
+    box-shadow:0 14px 38px rgba(0,0,0,.55); transform-style:preserve-3d;
+    transition:transform .15s ease-out;
+  }
+  .card.in { animation:flip .65s cubic-bezier(.2,.9,.3,1.2) forwards; }
+  @keyframes flip { to{opacity:1;transform:translateY(0) rotateY(0);} }
+  .card .tier { font-size:10px; letter-spacing:1.5px; opacity:.9; }
+  .card .name { font-size:16px; margin-top:8px; text-align:center; padding:0 8px; }
+  .card .role { font-size:10px; opacity:.7; margin-top:4px; }
+  .common   { background:linear-gradient(135deg,#4b5563,#374151); }
+  .uncommon { background:linear-gradient(135deg,#16a34a,#15803d); }
+  .rare     { background:linear-gradient(135deg,#2563eb,#1e40af); }
+  .epic     { background:linear-gradient(135deg,#7c3aed,#5b21b6); box-shadow:0 0 30px rgba(124,58,237,.55); }
+  .legendary{ background:linear-gradient(135deg,#f59e0b,#d97706); box-shadow:0 0 44px rgba(245,158,11,.7); }
+  /* the holo shine for legendaries */
+  .legendary .holo {
+    position:absolute; inset:0; border-radius:14px; pointer-events:none;
+    background:linear-gradient(115deg,transparent 25%,rgba(255,255,255,.7) 45%,
+      rgba(88,101,242,.6) 50%,rgba(0,229,255,.6) 55%,transparent 75%);
+    background-size:220% 220%; mix-blend-mode:overlay; animation:holo 2.4s linear infinite;
+  }
+  @keyframes holo { 0%{background-position:0% 0%;} 100%{background-position:220% 220%;} }
+
+  .cta { margin-top:28px; height:22px; color:#8b949e; font-size:14px; }
+  .again { margin-top:14px; padding:11px 26px; border:none; border-radius:22px;
+    background:#5865F2; color:#fff; font-weight:800; font-size:15px; cursor:pointer;
+    display:none; box-shadow:0 8px 24px rgba(88,101,242,.5); }
+  .again.show { display:block; }
+</style>
+</head>
+<body>
+  <div class="topbar" id="topbar">
+    <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
+    <span>Opening as <span class="who" id="who">…</span></span>
+  </div>
+
+  <div class="pack" id="pack">
+    <div class="logo"><b>QCL PACK</b><span>TAP TO OPEN</span></div>
+  </div>
+  <div class="reveal" id="reveal"></div>
+  <div class="cta" id="cta"></div>
+  <button class="again" id="again">Open Another</button>
+
+<script type="module">
+  // ---- pool + odds MATCH THE BOT (TVT_ODDS, TVT_PACK_SIZE=3) ----
+  const ODDS = [["legendary",0.01],["epic",0.04],["rare",0.15],["uncommon",0.30],["common",0.50]];
+  const PACK_SIZE = 3;
+  const POOL = {
+    legendary: [["Trifecta","3× Champion"],["II WHEEL II","3× Champion"]],
+    epic:      [["iBoola","OPOY"],["DynastyOnTop","MVP"]],
+    rare:      [["Kyglo","6MOY"],["liLurked","DPOY"]],
+    uncommon:  [["Silent Star","All-League"],["Low Ego","All-Def"]],
+    common:    [["Role Player","Contributor"],["Bench Unit","Depth"]],
+  };
+  function drawTier(){ let r=Math.random(),c=0; for(const [t,o] of ODDS){c+=o; if(r<=c)return t;} return "common"; }
+  function drawPack(){
+    const out=[];
+    for(let i=0;i<PACK_SIZE;i++){ const t=drawTier(); const b=POOL[t];
+      out.push({tier:t, ...(()=>{const [n,r]=b[Math.floor(Math.random()*b.length)];return{name:n,role:r};})()}); }
+    return out;
+  }
+
+  const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
+        cta=document.getElementById('cta'), again=document.getElementById('again');
+  let busy=false;
+
+  const PULL_SERVER = "https://diligent-eagerness-test.up.railway.app";
+  let authCode = null;   // set by the Discord SDK below
+
+  async function open(){
+    if(busy) return; busy=true; cta.textContent='';
+    pack.classList.add('shake');
+    // ask the SERVER for the real pull (anti-cheat) while the pack shakes
+    const pullPromise = fetch(PULL_SERVER + "/api/openpack", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ code: authCode })
+    }).then(r=>r.json()).catch(()=>null);
+    setTimeout(()=>{ pack.classList.remove('shake'); pack.classList.add('burst'); },720);
+    const result = await pullPromise;
+    setTimeout(()=>{
+      pack.style.display='none';
+      if(result && result.cards){
+        if(result.user){ document.getElementById('who').textContent = result.user; }
+        show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
+                                   name:c.name, role:''})));
+      } else {
+        cta.textContent = (result && result.error) ? result.error
+                          : "Couldn't reach the server — try again.";
+        busy=false; pack.style.display='flex'; pack.classList.remove('burst');
+      }
+    },1240);
+  }
+  function show(cards){
+    reveal.innerHTML=''; reveal.classList.add('show');
+    cards.forEach((c,i)=>{
+      const el=document.createElement('div');
+      el.className='card '+c.tier;
+      el.innerHTML =
+        (c.tier==='legendary' ? '<div class="holo"></div>' : '') +
+        `<div class="tier">${c.tier.toUpperCase()}</div>`+
+        `<div class="name">${c.name}</div>`+
+        `<div class="role">${c.role}</div>`;
+      reveal.appendChild(el);
+      setTimeout(()=>el.classList.add('in'), 220 + i*280);
+      // holo tilt on legendaries
+      if(c.tier==='legendary') addTilt(el);
+    });
+    setTimeout(()=>again.classList.add('show'), 220 + cards.length*280 + 500);
+  }
+  function addTilt(el){
+    function m(e){ const r=el.getBoundingClientRect(); const p=e.touches?e.touches[0]:e;
+      const x=(p.clientX-r.left)/r.width, y=(p.clientY-r.top)/r.height;
+      el.style.transform=`rotateX(${(y-.5)*-20}deg) rotateY(${(x-.5)*20}deg) scale(1.08)`; }
+    function r(){ el.style.transform=''; }
+    el.addEventListener('mousemove',m); el.addEventListener('mouseleave',r);
+    el.addEventListener('touchmove',e=>{e.preventDefault();m(e);},{passive:false});
+    el.addEventListener('touchend',r);
+  }
+  pack.addEventListener('click', open);
+  again.addEventListener('click', ()=>{
+    busy=false; reveal.classList.remove('show'); reveal.innerHTML='';
+    again.classList.remove('show'); pack.style.display='flex';
+    pack.classList.remove('burst'); cta.textContent='';
+  });
+
+  // ---- Discord Embedded App SDK: identify who's playing ----
+  // (loads only when running inside Discord; harmless in a browser)
+  try {
+    const { DiscordSDK } = await import("https://esm.sh/@discord/embedded-app-sdk@1.2.0");
+    const CLIENT_ID = "1498101411894919331";   // <- set this
+    const sdk = new DiscordSDK(CLIENT_ID);
+    await sdk.ready();
+    const { code } = await sdk.commands.authorize({
+      client_id: CLIENT_ID, response_type: "code", scope: ["identify"],
+    });
+    authCode = code;
+    // In production you'd exchange `code` on your server for the user.
+    // For the visual Activity we just show a friendly placeholder name.
+    document.getElementById('who').textContent = "you";
+  } catch (e) {
+    // not inside Discord (plain browser preview) — fine
+    document.getElementById('who').textContent = "you";
+  }
+</script>
+</body>
+</html>
