@@ -141,10 +141,24 @@ async def open_pack(request):
             return _cors(web.json_response({"error": "slow down"}, status=429))
         _COOLDOWN[uid] = now
 
-        # pool from the repo (names + rarity the bot published)
+        # pool from the repo. Supports BOTH shapes:
+        #  A) {"names":[...], "rarity":{...}}
+        #  B) {"<PlayerName>": {"tier": "...", ...}, ...}  (your bot's shape)
         pool, _ = await _gh_get(session, POOL_PATH)
-        names = pool.get("names") or list(pool.get("cards", {}).keys())
-        rarity = pool.get("rarity", {})
+        names, rarity = [], {}
+        if isinstance(pool, dict) and pool.get("names"):
+            names = pool["names"]
+            rarity = pool.get("rarity", {})
+        elif isinstance(pool, dict) and pool.get("cards"):
+            names = list(pool["cards"].keys())
+            rarity = {n: (v.get("tier", "Common") if isinstance(v, dict) else "Common")
+                      for n, v in pool["cards"].items()}
+        elif isinstance(pool, dict):
+            # shape B: top-level = player name -> {tier, ...}
+            for n, v in pool.items():
+                if isinstance(v, dict) and ("tier" in v or "cls" in v or "legend" in v):
+                    names.append(n)
+                    rarity[n] = v.get("tier", "Common")
         if not names:
             return _cors(web.json_response({"error": "pool not published yet"}, status=503))
 
