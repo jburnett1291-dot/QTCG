@@ -3,32 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>QCL Card Pull & Binder</title>
+<title>QCL Card Pull</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
+      user-select:none; }
   html, body { height:100%; }
   body {
     background: radial-gradient(circle at 50% 18%, #1a1f3a, #0d1117 72%);
     font-family: -apple-system, system-ui, "Segoe UI", sans-serif; color:#fff;
-    display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
-    overflow-x:hidden; touch-action:manipulation; padding-top: 60px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:manipulation;
   }
   .topbar { position:fixed; top:0; left:0; right:0; padding:12px 16px;
-    display:flex; align-items:center; justify-content:space-between; font-size:13px; color:#8b949e;
-    background:linear-gradient(#0d1117,#0d1117aa); z-index:10; backdrop-filter: blur(5px); }
-  .topbar-left { display: flex; align-items: center; gap: 10px; }
+    display:flex; align-items:center; gap:10px; font-size:13px; color:#8b949e;
+    background:linear-gradient(#0d1117,transparent); z-index:10; }
   .topbar img { width:26px; height:26px; border-radius:50%; }
   .topbar .who { color:#fff; font-weight:700; }
-  
-  .nav-btn {
-    background: #21262d; border: 1px solid #30363d; color: #fff;
-    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;
-  }
-  .nav-btn:hover { background: #30363d; }
-
-  /* ---------- VIEW CONTROLS ---------- */
-  .view-container { display: none; width: 100%; flex-direction: column; align-items: center; flex: 1; justify-content: center; padding: 20px; }
-  .view-container.active { display: flex; }
 
   /* ---------- PACK ---------- */
   .pack {
@@ -69,11 +59,12 @@
   .card .tier { font-size:10px; letter-spacing:1.5px; opacity:.9; }
   .card .name { font-size:16px; margin-top:8px; text-align:center; padding:0 8px; }
   .card .role { font-size:10px; opacity:.7; margin-top:4px; }
-  .common    { background:linear-gradient(135deg,#4b5563,#374151); }
+  .common   { background:linear-gradient(135deg,#4b5563,#374151); }
   .uncommon { background:linear-gradient(135deg,#16a34a,#15803d); }
   .rare     { background:linear-gradient(135deg,#2563eb,#1e40af); }
   .epic     { background:linear-gradient(135deg,#7c3aed,#5b21b6); box-shadow:0 0 30px rgba(124,58,237,.55); }
   .legendary{ background:linear-gradient(135deg,#f59e0b,#d97706); box-shadow:0 0 44px rgba(245,158,11,.7); }
+  /* the holo shine for legendaries */
   .legendary .holo {
     position:absolute; inset:0; border-radius:14px; pointer-events:none;
     background:linear-gradient(115deg,transparent 25%,rgba(255,255,255,.7) 45%,
@@ -82,206 +73,100 @@
   }
   @keyframes holo { 0%{background-position:0% 0%;} 100%{background-position:220% 220%;} }
 
-  .cta { margin-top:28px; height:22px; color:#8b949e; font-size:14px; text-align: center; }
+  .cta { margin-top:28px; height:22px; color:#8b949e; font-size:14px; }
   .again { margin-top:14px; padding:11px 26px; border:none; border-radius:22px;
     background:#5865F2; color:#fff; font-weight:800; font-size:15px; cursor:pointer;
     display:none; box-shadow:0 8px 24px rgba(88,101,242,.5); }
   .again.show { display:block; }
-
-  /* ---------- BINDER VIEW STYLES ---------- */
-  .binder-page {
-    background-color: #1a1b26;
-    border: 4px solid #32344a;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-    width: 100%;
-    max-width: 750px;
-    box-sizing: border-box;
-    max-height: 75vh;
-    overflow-y: auto;
-  }
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 15px;
-  }
-  .binder-slot {
-    background-color: #14151f;
-    border: 2px dashed #2c2e43;
-    border-radius: 8px;
-    height: 220px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-  .binder-slot.filled {
-    border: 2px solid var(--binder-border, #8b9bb4);
-    background: linear-gradient(145deg, #181924, #11121a);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-  }
-  .binder-slot[data-tier="common"] { --binder-border: #8b9bb4; }
-  .binder-slot[data-tier="uncommon"] { --binder-border: #16a34a; }
-  .binder-slot[data-tier="rare"] { --binder-border: #2563eb; }
-  .binder-slot[data-tier="epic"] { --binder-border: #7c3aed; }
-  .binder-slot[data-tier="legendary"] { --binder-border: #f59e0b; }
-  
-  .binder-badge {
-    position: absolute; top: 8px; right: 8px; font-size: 0.65rem; font-weight: bold;
-    text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
-    background: rgba(0, 0, 0, 0.5); color: var(--binder-border); border: 1px solid var(--binder-border);
-  }
-  .binder-name { font-weight: bold; font-size: 0.95rem; text-align: center; margin-top: 10px; }
-  .binder-count { font-size: 0.75rem; color: #8b9bb4; margin-top: 4px; }
-  .empty-text { color: #4a4d6a; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
 </style>
 </head>
 <body>
-
   <div class="topbar" id="topbar">
-    <div class="topbar-left">
-      <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
-      <span>Opening as <span class="who" id="who">...</span></span>
-    </div>
-    <div>
-      <button class="nav-btn" id="nav-toggle">📖 Open Binder</button>
-    </div>
+    <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
+    <span>Opening as <span class="who" id="who">…</span></span>
   </div>
 
-  <!-- VIEW 1: PACK OPENER -->
-  <div class="view-container active" id="view-packer">
-    <div class="pack" id="pack">
-      <div class="logo"><b>QCL PACK</b><span>TAP TO OPEN</span></div>
-    </div>
-    <div class="reveal" id="reveal"></div>
-    <div class="cta" id="cta"></div>
-    <button class="again" id="again">Open Another</button>
+  <div class="pack" id="pack">
+    <div class="logo"><b>QCL PACK</b><span>TAP TO OPEN</span></div>
   </div>
-
-  <!-- VIEW 2: BINDER GRID -->
-  <div class="view-container" id="view-binder">
-    <div style="margin-bottom: 12px; font-size: 0.85rem; color: #8b9bb4;" id="binder-stats">Loading collection...</div>
-    <div class="binder-page">
-      <div class="card-grid" id="binder-grid"></div>
-    </div>
-  </div>
+  <div class="reveal" id="reveal"></div>
+  <div class="cta" id="cta"></div>
+  <button class="again" id="again">Open Another</button>
 
 <script type="module">
+  // ---- pool + odds MATCH THE BOT (TVT_ODDS, TVT_PACK_SIZE=3) ----
+  const ODDS = [["legendary",0.01],["epic",0.04],["rare",0.15],["uncommon",0.30],["common",0.50]];
+  const PACK_SIZE = 3;
+  const POOL = {
+    legendary: [["Trifecta","3× Champion"],["II WHEEL II","3× Champion"]],
+    epic:      [["iBoola","OPOY"],["DynastyOnTop","MVP"]],
+    rare:      [["Kyglo","6MOY"],["liLurked","DPOY"]],
+    uncommon:  [["Silent Star","All-League"],["Low Ego","All-Def"]],
+    common:    [["Role Player","Contributor"],["Bench Unit","Depth"]],
+  };
+  function drawTier(){ let r=Math.random(),c=0; for(const [t,o] of ODDS){c+=o; if(r<=c)return t;} return "common"; }
+  function previewPack(){
+    // browser-only demo pull so you can see the animation without Discord
+    const demo = [
+      {tier:'legendary', name:'Trifecta', role:'3x Champ'},
+      {tier:'rare',      name:'Kyglo',    role:'6MOY'},
+      {tier:'common',    name:'Role Player', role:''},
+    ];
+    return demo;
+  }
+  function drawPack(){
+    const out=[];
+    for(let i=0;i<PACK_SIZE;i++){ const t=drawTier(); const b=POOL[t];
+      out.push({tier:t, ...(()=>{const [n,r]=b[Math.floor(Math.random()*b.length)];return{name:n,role:r};})()}); }
+    return out;
+  }
+
   const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
         cta=document.getElementById('cta'), again=document.getElementById('again');
-  const viewPacker=document.getElementById('view-packer'), viewBinder=document.getElementById('view-binder');
-  const navToggle=document.getElementById('nav-toggle');
-  
   let busy=false;
-  let collectedCards = []; 
 
+  // Inside Discord, calls MUST go through the proxy path mapped in the
+  // Developer Portal (PREFIX /railway -> your railway domain). In a plain
+  // browser we fall back to the direct URL (preview only).
   const IN_DISCORD = location.hostname.endsWith("discordsays.com");
   const PULL_SERVER = IN_DISCORD
     ? "/.proxy/railway"
     : "https://diligent-eagerness-test.up.railway.app";
-  let authCode = null;
-  let sessionToken = null;
-  let currentUserId = null;
-
-  // Navigation toggle
-  let isBinderOpen = false;
-  navToggle.addEventListener('click', () => {
-    isBinderOpen = !isBinderOpen;
-    if (isBinderOpen) {
-      viewPacker.classList.remove('active');
-      viewBinder.classList.add('active');
-      navToggle.textContent = "📦 Open Packs";
-      fetchUserCollection(); 
-    } else {
-      viewBinder.classList.remove('active');
-      viewPacker.classList.active ? '' : viewPacker.classList.add('active');
-      navToggle.textContent = "📖 Open Binder";
-    }
-  });
-
-  async function fetchUserCollection() {
-    const stats = document.getElementById('binder-stats');
-    
-    // Check if the user ID exists before requesting the server
-    if (!currentUserId) {
-      stats.textContent = "Loading... (Make sure you are in Discord)";
-      renderBinderGrid();
-      return;
-    }
-
-    stats.textContent = "Syncing your binder from the QCL server...";
-    
-    try {
-      // Ask the python backend for the specific user's saved data
-      const res = await fetch(`${PULL_SERVER}/api/collection?user_id=${currentUserId}`);
-      const data = await res.json();
-      
-      if (data.cards) {
-        // Tally up duplicates so they show as "x2", "x3", etc.
-        let grouped = [];
-        data.cards.forEach(c => {
-           // Fallback check: if the server saved an old string, convert it cleanly
-           let cardName = typeof c === 'string' ? c : c.name;
-           let cardTier = typeof c === 'string' ? 'common' : (c.tier || 'common').toLowerCase();
-           
-           let existing = grouped.find(item => item.name === cardName);
-           if(existing) { existing.count++; }
-           else { grouped.push({ tier: cardTier, name: cardName, count: 1 }); }
-        });
-        collectedCards = grouped; // Update the local screen with the server's truth
-      }
-      renderBinderGrid();
-    } catch (err) {
-      stats.textContent = "Failed to sync collection.";
-      renderBinderGrid();
-    }
-  }
+  let authCode = null;   // set by the Discord SDK below
+  let sessionToken = null;  // reusable session after first pull
 
   async function open(){
     if(busy) return; busy=true; cta.textContent='';
     pack.classList.add('shake');
-    
-    const pullPayload = sessionToken ? { session: sessionToken } : { code: authCode };
+    // ask the SERVER for the real pull (anti-cheat) while the pack shakes
     const pullPromise = fetch(PULL_SERVER + "/api/openpack", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(pullPayload)
+      // first pull sends the one-time code; after that we reuse the session
+      body: JSON.stringify(sessionToken ? { session: sessionToken }
+                                        : { code: authCode })
     }).then(r=>r.json()).catch(()=>null);
-
     setTimeout(()=>{ pack.classList.remove('shake'); pack.classList.add('burst'); },720);
     const result = await pullPromise;
-    
     setTimeout(()=>{
       pack.style.display='none';
-      let cardsToShown = [];
       if(result && result.cards){
         if(result.session){ sessionToken = result.session; }
         if(result.user){ document.getElementById('who').textContent = result.user; }
-        if(result.user_id){ currentUserId = result.user_id; }
-        cardsToShown = result.cards.map(c=>({tier:(c.tier||'common').toLowerCase(), name:c.name, role:c.role || ''}));
+        show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
+                                   name:c.name, role:''})));
+      } else if(!authCode){
+        // no Discord code = running in a browser, not inside Discord.
+        // show a PREVIEW pull so you can see the animation anywhere.
+        cta.textContent = "Preview mode (open inside Discord to save real pulls)";
+        show(previewPack());
       } else {
-        cta.textContent = (result && result.error) ? ("Server: " + result.error) : "Preview Mode (Open inside Discord for real pulls)";
-        cardsToShown = [
-          {tier:'legendary', name:'Trifecta', role:'3x Champ'},
-          {tier:'rare',      name:'Kyglo',    role:'6MOY'},
-          {tier:'common',    name:'Role Player', role:''},
-        ];
+        cta.textContent = (result && result.error)
+          ? ("Server: " + result.error)
+          : "Couldn't reach the server — check it's awake.";
+        busy=false; pack.style.display='flex'; pack.classList.remove('burst');
       }
-      
-      // Update local storage so binder updates without needing a refresh
-      cardsToShown.forEach(c => {
-        let existing = collectedCards.find(item => item.name === c.name);
-        if(existing) { existing.count++; }
-        else { collectedCards.push({ ...c, count: 1 }); }
-      });
-
-      show(cardsToShown);
     },1240);
   }
-
   function show(cards){
     reveal.innerHTML=''; reveal.classList.add('show');
     cards.forEach((c,i)=>{
@@ -294,45 +179,11 @@
         `<div class="role">${c.role}</div>`;
       reveal.appendChild(el);
       setTimeout(()=>el.classList.add('in'), 220 + i*280);
+      // holo tilt on legendaries
       if(c.tier==='legendary') addTilt(el);
     });
     setTimeout(()=>again.classList.add('show'), 220 + cards.length*280 + 500);
   }
-
-  function renderBinderGrid() {
-    const grid = document.getElementById('binder-grid');
-    const stats = document.getElementById('binder-stats');
-    grid.innerHTML = '';
-
-    const totalCount = collectedCards.reduce((sum, c) => sum + c.count, 0);
-    stats.textContent = `Total Cards: ${totalCount} | Unique Cards: ${collectedCards.length}`;
-
-    if(collectedCards.length === 0) {
-      grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding: 40px; color:#8b949e;">No cards pulled yet! Open a pack first.</div>`;
-      return;
-    }
-
-    collectedCards.forEach(card => {
-      const slot = document.createElement('div');
-      slot.className = 'binder-slot filled';
-      slot.setAttribute('data-tier', card.tier);
-      slot.innerHTML = `
-        <div class="binder-badge">${card.tier}</div>
-        <div class="binder-name">${card.name}</div>
-        <div class="binder-count">x${card.count}</div>
-      `;
-      grid.appendChild(slot);
-    });
-
-    const emptyNeeded = (6 - (collectedCards.length % 6)) % 6;
-    for(let i=0; i<emptyNeeded; i++){
-      const empty = document.createElement('div');
-      empty.className = 'binder-slot';
-      empty.innerHTML = `<div class="empty-text">Empty Pocket</div>`;
-      grid.appendChild(empty);
-    }
-  }
-
   function addTilt(el){
     function m(e){ const r=el.getBoundingClientRect(); const p=e.touches?e.touches[0]:e;
       const x=(p.clientX-r.left)/r.width, y=(p.clientY-r.top)/r.height;
@@ -342,40 +193,46 @@
     el.addEventListener('touchmove',e=>{e.preventDefault();m(e);},{passive:false});
     el.addEventListener('touchend',r);
   }
-
-  if (pack) pack.addEventListener('click', open);
-  if (again) again.addEventListener('click', ()=>{
+  pack.addEventListener('click', open);
+  again.addEventListener('click', ()=>{
     busy=false; reveal.classList.remove('show'); reveal.innerHTML='';
     again.classList.remove('show'); pack.style.display='flex';
     pack.classList.remove('burst'); cta.textContent='';
   });
 
-  // Discord SDK Login Handler - Grabs user info immediately
+  // ---- Discord Embedded App SDK: identify who's playing ----
+  // (loads only when running inside Discord; harmless in a browser)
   try {
     const { DiscordSDK } = await import("https://esm.sh/@discord/embedded-app-sdk@1.2.0");
-    const CLIENT_ID = "1498101411894919331";
+    const CLIENT_ID = "1498101411894919331";   // <- set this
     const sdk = new DiscordSDK(CLIENT_ID);
     await sdk.ready();
-    
     const { code } = await sdk.commands.authorize({
       client_id: CLIENT_ID, response_type: "code", scope: ["identify"],
     });
     authCode = code;
-    
-    // Explicitly authenticate to pull User ID for the binder
-    const auth = await sdk.commands.authenticate({ access_token: code });
-    if (auth && auth.user) {
-      currentUserId = auth.user.id;
-      document.getElementById('who').textContent = auth.user.global_name || auth.user.username;
-      if (auth.user.avatar) {
-        document.getElementById('pfp').src = `https://cdn.discordapp.com/avatars/${auth.user.id}/${auth.user.avatar}.png`;
+    // LOG IN ON LOAD: exchange the one-time code for a reusable session now,
+    // so identity is ready before the first pull and 'who' shows the real name.
+    try {
+      const who = document.getElementById('who');
+      who.textContent = "logging in…";
+      const r = await fetch(PULL_SERVER + "/api/login", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ code: authCode })
+      });
+      const data = await r.json().catch(()=>null);
+      if (data && data.session) {
+        sessionToken = data.session;
+        who.textContent = data.user || "you";
+      } else {
+        who.textContent = "you";
       }
-    } else {
+    } catch (e) {
       document.getElementById('who').textContent = "you";
     }
   } catch (e) {
-    document.getElementById('who').textContent = "Developer Preview";
-    console.error("Discord SDK Error:", e);
+    // not inside Discord (plain browser preview) — fine
+    document.getElementById('who').textContent = "you";
   }
 </script>
 </body>
