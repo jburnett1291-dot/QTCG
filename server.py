@@ -269,43 +269,65 @@ async def get_binder(request):
 
     uid = str(sess["id"])
     
-    async with aiohttp.ClientSession() as session:
-        # 1. Fetch user save from repo
-        pulls, _ = await _gh_get(session, SAVE_PATH)
-        if not isinstance(pulls, dict):
-            pulls = {}
-        
-        user_data = pulls.get(uid, {"cards": []})
-        owned_cards = user_data.get("cards", [])
-
-        # 2. Fetch market/pool for rarity info
-        pool, _ = await _gh_get(session, POOL_PATH)
-        rarity_map = {}
-        if isinstance(pool, dict) and pool.get("rarity"):
-            rarity_map = pool["rarity"]
-        elif isinstance(pool, dict) and pool.get("cards"):
-            rarity_map = {n: (v.get("tier", "Common") if isinstance(v, dict) else "Common")
-                          for n, v in pool["cards"].items()}
-        elif isinstance(pool, dict):
-            for n, v in pool.items():
-                if isinstance(v, dict) and "tier" in v:
-                    rarity_map[n] = v["tier"]
-
-        # 3. Format response (group duplicates)
-        card_counts = {}
-        for card in owned_cards:
-            card_counts[card] = card_counts.get(card, 0) + 1
+    try:
+        async with aiohttp.ClientSession() as session:
+            # 1. Fetch user save from repo
+            pulls, _ = await _gh_get(session, SAVE_PATH)
+            if not isinstance(pulls, dict):
+                pulls = {}
             
-        formatted_cards = []
-        for name, count in card_counts.items():
-            tier = rarity_map.get(name, "Common").lower()
-            formatted_cards.append({"name": name, "tier": tier, "count": count})
+            # Safely get the user data
+            user_data = pulls.get(uid) or {}
+            if not isinstance(user_data, dict):
+                user_data = {}
+                
+            owned_cards = user_data.get("cards", [])
 
-        # Sort by rarity (Legendary first) then alphabetical
-        tier_order = {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
-        formatted_cards.sort(key=lambda x: (tier_order.get(x["tier"], 5), x["name"]))
+            # 2. Fetch market/pool for rarity info
+            pool, _ = await _gh_get(session, POOL_PATH)
+            rarity_map = {}
+            if isinstance(pool, dict) and pool.get("rarity"):
+                rarity_map = pool["rarity"]
+            elif isinstance(pool, dict) and pool.get("cards"):
+                rarity_map = {n: (v.get("tier", "Common") if isinstance(v, dict) else "Common")
+                              for n, v in pool["cards"].items()}
+            elif isinstance(pool, dict):
+                for n, v in pool.items():
+                    if isinstance(v, dict) and "tier" in v:
+                        rarity_map[n] = v["tier"]
 
-    return _cors(web.json_response({"cards": formatted_cards}))
+            # 3. Format response & safely group duplicates regardless of save format
+            card_counts = {}
+            if isinstance(owned_cards, dict):
+                # If cards were saved as {"Trifecta": 2}
+                for k, v in owned_cards.items():
+                    card_counts[k] = int(v) if str(v).isdigit() else 1
+            elif isinstance(owned_cards, list):
+                # If cards were saved as ["Trifecta", "Trifecta"] or [{"name": "Trifecta"}]
+                for card in owned_cards:
+                    if isinstance(card, str):
+                        card_counts[card] = card_counts.get(card, 0) + 1
+                    elif isinstance(card, dict) and "name" in card:
+                        cname = card["name"]
+                        card_counts[cname] = card_counts.get(cname, 0) + 1
+                
+            formatted_cards = []
+            for name, count in card_counts.items():
+                # Safely get tier and cast to string (prevents crashes if tier is null/missing)
+                tier_val = rarity_map.get(name, "Common")
+                tier = str(tier_val).lower() if tier_val else "common"
+                formatted_cards.append({"name": str(name), "tier": tier, "count": count})
+
+            # Sort by rarity (Legendary first) then alphabetical
+            tier_order = {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
+            formatted_cards.sort(key=lambda x: (tier_order.get(x["tier"], 5), x["name"]))
+
+        return _cors(web.json_response({"cards": formatted_cards}))
+        
+    except Exception as e:
+        # If it still crashes, this will display the exact Python error on your frontend
+        print(f"[Binder Error] {e}")
+        return _cors(web.json_response({"error": f"Server Error: {str(e)}"}, status=500))
 
 
 async def health(request):
