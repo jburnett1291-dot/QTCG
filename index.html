@@ -252,8 +252,14 @@
     el.addEventListener('touchend',r);
   }
 
-  pack.addEventListener('click', open);
-  again.addEventListener('click', resetPackUI);
+  // --- SAFEGUARDS ADDED HERE ---
+  if (pack) {
+    pack.addEventListener('click', open);
+  }
+  
+  if (again) {
+    again.addEventListener('click', resetPackUI);
+  }
 
   // ---- Discord Embedded App SDK ----
   try {
