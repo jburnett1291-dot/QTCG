@@ -1,7 +1,169 @@
-<script type="module">
-  import { DiscordSDK } from "https://esm.sh/@discord/embedded-app-sdk@1.2.0";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QCL Card Pull</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
+      user-select:none; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(circle at 50% 18%, #1a1f3a, #0d1117 72%);
+    font-family: -apple-system, system-ui, "Segoe UI", sans-serif; color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:manipulation;
+  }
+  
+  /* ---------- TOPBAR ---------- */
+  .topbar { position:fixed; top:0; left:0; right:0; padding:12px 16px;
+    display:flex; align-items:center; gap:10px; font-size:13px; color:#8b949e;
+    background:linear-gradient(#0d1117,transparent); z-index:10; }
+  .topbar img { width:26px; height:26px; border-radius:50%; }
+  .topbar .who { color:#fff; font-weight:700; }
+  .back-btn { background:none; border:none; color:#8b949e; font-size:14px; font-weight:bold; 
+    cursor:pointer; display:none; padding-right:10px; }
+  .back-btn:active { color:#fff; }
 
-  // ---- pool + odds MATCH THE BOT (TVT_ODDS, TVT_PACK_SIZE=3) ----
+  /* ---------- VIEW SYSTEM ---------- */
+  .view { display:none; flex-direction:column; align-items:center; justify-content:center; 
+    width:100%; height:100%; padding-top:40px; }
+  .view.show { display:flex; }
+
+  /* ---------- HOME MENU ---------- */
+  .menu-title { font-size:32px; font-weight:900; letter-spacing:4px; margin-bottom:40px; 
+    text-shadow:0 4px 15px rgba(88,101,242,.6); }
+  .menu-btn { width:220px; padding:16px; margin:10px; border:none; border-radius:14px;
+    background:linear-gradient(135deg,#5865F2,#4752c4); color:#fff; font-weight:800; font-size:16px; 
+    cursor:pointer; box-shadow:0 8px 24px rgba(88,101,242,.4); transition:transform .1s; }
+  .menu-btn:active { transform:scale(.95); }
+  .menu-btn.disabled { background:linear-gradient(135deg,#374151,#1f2937); box-shadow:none; 
+    cursor:not-allowed; opacity:.6; }
+
+  /* ---------- BINDER ---------- */
+  .binder-title { font-size:24px; font-weight:800; color:#8b949e; }
+
+  /* ---------- PACK ---------- */
+  .pack {
+    width:240px; height:340px; border-radius:22px; cursor:pointer; position:relative;
+    background:linear-gradient(135deg,#5865F2 0%,#8b5cf6 45%,#ec4899 100%);
+    box-shadow:0 25px 60px rgba(88,101,242,.55), inset 0 2px 20px rgba(255,255,255,.25);
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+    transition:transform .2s;
+  }
+  .pack:active { transform:scale(.96); }
+  .pack::before { content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+    transform:skewX(-20deg); animation:sheen 2.6s infinite; }
+  @keyframes sheen { 0%{left:-60%;} 60%,100%{left:160%;} }
+  .pack .logo { z-index:2; text-align:center; }
+  .pack .logo b { font-size:28px; font-weight:900; letter-spacing:3px;
+    text-shadow:0 3px 12px rgba(0,0,0,.5); }
+  .pack .logo span { display:block; font-size:11px; letter-spacing:4px; opacity:.85; margin-top:8px; }
+  .pack.shake { animation:shake .12s ease-in-out 6; }
+  @keyframes shake { 0%,100%{transform:translateX(0) rotate(0);}
+    25%{transform:translateX(-6px) rotate(-2deg);} 75%{transform:translateX(6px) rotate(2deg);} }
+  .pack.burst { animation:burst .55s ease-out forwards; }
+  @keyframes burst { to{transform:scale(1.7);opacity:0;filter:blur(10px);} }
+
+  /* ---------- REVEAL ---------- */
+  .reveal { display:none; gap:14px; flex-wrap:wrap; justify-content:center;
+    max-width:680px; padding:0 16px; perspective:1000px; }
+  .reveal.show { display:flex; }
+  .card {
+    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-weight:900; opacity:0; transform:translateY(46px) rotateY(90deg);
+    box-shadow:0 14px 38px rgba(0,0,0,.55); transform-style:preserve-3d;
+    transition:transform .15s ease-out;
+  }
+  .card.in { animation:flip .65s cubic-bezier(.2,.9,.3,1.2) forwards; }
+  @keyframes flip { to{opacity:1;transform:translateY(0) rotateY(0);} }
+  .card .tier { font-size:10px; letter-spacing:1.5px; opacity:.9; }
+  .card .name { font-size:16px; margin-top:8px; text-align:center; padding:0 8px; }
+  .card .role { font-size:10px; opacity:.7; margin-top:4px; }
+  .common   { background:linear-gradient(135deg,#4b5563,#374151); }
+  .uncommon { background:linear-gradient(135deg,#16a34a,#15803d); }
+  .rare     { background:linear-gradient(135deg,#2563eb,#1e40af); }
+  .epic     { background:linear-gradient(135deg,#7c3aed,#5b21b6); box-shadow:0 0 30px rgba(124,58,237,.55); }
+  .legendary{ background:linear-gradient(135deg,#f59e0b,#d97706); box-shadow:0 0 44px rgba(245,158,11,.7); }
+  
+  .legendary .holo {
+    position:absolute; inset:0; border-radius:14px; pointer-events:none;
+    background:linear-gradient(115deg,transparent 25%,rgba(255,255,255,.7) 45%,
+      rgba(88,101,242,.6) 50%,rgba(0,229,255,.6) 55%,transparent 75%);
+    background-size:220% 220%; mix-blend-mode:overlay; animation:holo 2.4s linear infinite;
+  }
+  @keyframes holo { 0%{background-position:0% 0%;} 100%{background-position:220% 220%;} }
+
+  .cta { margin-top:28px; height:22px; color:#8b949e; font-size:14px; }
+  .again { margin-top:14px; padding:11px 26px; border:none; border-radius:22px;
+    background:#5865F2; color:#fff; font-weight:800; font-size:15px; cursor:pointer;
+    display:none; box-shadow:0 8px 24px rgba(88,101,242,.5); }
+  .again.show { display:block; }
+</style>
+</head>
+<body>
+  
+  <div class="topbar" id="topbar">
+    <button class="back-btn" id="btn-back">◀ Back</button>
+    <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
+    <span>Opening as <span class="who" id="who">…</span></span>
+  </div>
+
+  <!-- HOME VIEW -->
+  <div id="view-home" class="view show">
+    <div class="menu-title">QTCG</div>
+    <button class="menu-btn" id="nav-packs">Open Packs</button>
+    <button class="menu-btn" id="nav-binder">My Binder</button>
+    <button class="menu-btn disabled" id="nav-play">Play (Coming Soon)</button>
+  </div>
+
+  <!-- PACKS VIEW -->
+  <div id="view-packs" class="view">
+    <div class="pack" id="pack">
+      <div class="logo"><b>QCL PACK</b><span>TAP TO OPEN</span></div>
+    </div>
+    <div class="reveal" id="reveal"></div>
+    <div class="cta" id="cta"></div>
+    <button class="again" id="again">Open Another</button>
+  </div>
+
+  <!-- BINDER VIEW -->
+  <div id="view-binder" class="view">
+    <div class="binder-title">Your Collection</div>
+    <div class="cta">Binder features loading...</div>
+  </div>
+
+<script type="module">
+  // ---- VIEW NAVIGATION LOGIC ----
+  const views = document.querySelectorAll('.view');
+  const btnBack = document.getElementById('btn-back');
+
+  function switchView(viewId) {
+    views.forEach(v => v.classList.remove('show'));
+    document.getElementById(viewId).classList.add('show');
+    
+    // Show back button only if we are NOT on the home screen
+    if (viewId === 'view-home') {
+      btnBack.style.display = 'none';
+      resetPackUI(); // Clean up pack screen if navigating away
+    } else {
+      btnBack.style.display = 'block';
+    }
+  }
+
+  function resetPackUI() {
+    busy=false; reveal.classList.remove('show'); reveal.innerHTML='';
+    again.classList.remove('show'); pack.style.display='flex';
+    pack.classList.remove('burst'); cta.textContent='';
+  }
+
+  document.getElementById('nav-packs').addEventListener('click', () => switchView('view-packs'));
+  document.getElementById('nav-binder').addEventListener('click', () => switchView('view-binder'));
+  btnBack.addEventListener('click', () => switchView('view-home'));
+
+  // ---- PACK PULL LOGIC ----
   const ODDS = [["legendary",0.01],["epic",0.04],["rare",0.15],["uncommon",0.30],["common",0.50]];
   const PACK_SIZE = 3;
   const POOL = {
@@ -12,7 +174,6 @@
     common:    [["Role Player","Contributor"],["Bench Unit","Depth"]],
   };
 
-  function drawTier(){ let r=Math.random(),c=0; for(const [t,o] of ODDS){c+=o; if(r<=c)return t;} return "common"; }
   function previewPack(){
     return [
       {tier:'legendary', name:'Trifecta', role:'3x Champ'},
@@ -22,153 +183,109 @@
   }
 
   const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
-        cta=document.getElementById('cta'), again=document.getElementById('again'),
-        who=document.getElementById('who'), pfp=document.getElementById('pfp');
+        cta=document.getElementById('cta'), again=document.getElementById('again');
   let busy=false;
 
-  // Inside Discord, calls MUST go through the proxy path mapped in the
-  // Developer Portal (PREFIX /railway -> your railway domain). In a plain
-  // browser we fall back to the direct URL (preview only).
   const IN_DISCORD = location.hostname.endsWith("discordsays.com");
   const PULL_SERVER = IN_DISCORD
     ? "/.proxy/railway"
     : "https://diligent-eagerness-test.up.railway.app";
-  
   let authCode = null;
-  let sessionToken = null; 
-  let discordSdk = null;
+  let sessionToken = null;
 
-  // 1. Authenticate immediately on load
-  async function initApp() {
-    if (IN_DISCORD) {
-        who.innerText = "Authenticating...";
-        
-        // Ensure you populate your actual VITE_DISCORD_CLIENT_ID or hardcode the string here
-        discordSdk = new DiscordSDK(import.meta.env.VITE_DISCORD_CLIENT_ID);
-        await discordSdk.ready();
-        
-        const { code } = await discordSdk.commands.authorize({
-          client_id: discordSdk.clientId,
-          response_type: "code",
-          state: "",
-          prompt: "none",
-          scope: ["identify", "guilds"]
-        });
-        authCode = code;
-
-        // Exchange code for session via pull-server API
-        try {
-          const res = await fetch(`${PULL_SERVER}/api/login`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: authCode })
-          });
-          const data = await res.json();
-          if (data.session) {
-              sessionToken = data.session;
-              who.innerText = data.username || "Player";
-              if (data.avatar_url) pfp.src = data.avatar_url;
-          } else {
-              who.innerText = "Auth Failed";
-          }
-        } catch (e) {
-          console.error("Login exchange failed", e);
-          who.innerText = "Guest";
-        }
-    } else {
-        who.innerText = "Browser Preview";
-    }
-  }
-
-  // 2. Handle Pack Opening
-  async function openPack() {
-      if (busy) return;
-      busy = true;
-      
-      pack.classList.add("shake");
-      cta.innerText = "Connecting to QTCG Servers...";
-      
-      let pulls = [];
-      if (IN_DISCORD && sessionToken) {
-          try {
-              const res = await fetch(`${PULL_SERVER}/api/pull`, {
-                  method: "POST",
-                  headers: { 
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${sessionToken}`
-                  }
-              });
-              const data = await res.json();
-              if (data.error) {
-                  cta.innerText = `Error: ${data.error}`;
-                  pack.classList.remove("shake");
-                  busy = false;
-                  return;
-              }
-              pulls = data.cards;
-          } catch(e) {
-              cta.innerText = "Server Error";
-              pack.classList.remove("shake");
-              busy = false;
-              return;
-          }
+  async function open(){
+    if(busy) return; busy=true; cta.textContent='';
+    pack.classList.add('shake');
+    
+    const pullPromise = fetch(PULL_SERVER + "/api/openpack", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(sessionToken ? { session: sessionToken }
+                                        : { code: authCode })
+    }).then(r=>r.json()).catch(()=>null);
+    
+    setTimeout(()=>{ pack.classList.remove('shake'); pack.classList.add('burst'); },720);
+    const result = await pullPromise;
+    
+    setTimeout(()=>{
+      pack.style.display='none';
+      if(result && result.cards){
+        if(result.session){ sessionToken = result.session; }
+        if(result.user){ document.getElementById('who').textContent = result.user; }
+        show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
+                                   name:c.name, role:''})));
+      } else if(!authCode){
+        cta.textContent = "Preview mode (open inside Discord to save real pulls)";
+        show(previewPack());
       } else {
-          // Fallback for browser preview
-          await new Promise(r => setTimeout(r, 1200)); 
-          pulls = previewPack();
+        cta.textContent = (result && result.error)
+          ? ("Server: " + result.error)
+          : "Couldn't reach the server — check it's awake.";
+        busy=false; pack.style.display='flex'; pack.classList.remove('burst');
       }
-
-      // Animate Burst & Reveal
-      pack.classList.remove("shake");
-      pack.classList.add("burst");
-      
-      setTimeout(() => {
-          pack.style.display = "none";
-          reveal.innerHTML = "";
-          
-          pulls.forEach((cardData, idx) => {
-              const c = document.createElement("div");
-              c.className = `card ${cardData.tier}`;
-              c.style.animationDelay = `${idx * 0.15}s`;
-              
-              const t = document.createElement("div");
-              t.className = "tier";
-              t.innerText = cardData.tier.toUpperCase();
-              
-              const n = document.createElement("div");
-              n.className = "name";
-              n.innerText = cardData.name;
-              
-              const r = document.createElement("div");
-              r.className = "role";
-              r.innerText = cardData.role || "";
-              
-              c.appendChild(t);
-              c.appendChild(n);
-              c.appendChild(r);
-              
-              if (cardData.tier === "legendary") {
-                  const holo = document.createElement("div");
-                  holo.className = "holo";
-                  c.appendChild(holo);
-              }
-              
-              reveal.appendChild(c);
-              setTimeout(() => c.classList.add("in"), 50);
-          });
-          
-          reveal.classList.add("show");
-          cta.innerText = "Cards added to your collection!";
-          again.classList.add("show");
-          busy = false;
-      }, 500);
+    },1240);
   }
 
-  pack.addEventListener('click', openPack);
-  again.addEventListener('click', () => location.reload());
+  function show(cards){
+    reveal.innerHTML=''; reveal.classList.add('show');
+    cards.forEach((c,i)=>{
+      const el=document.createElement('div');
+      el.className='card '+c.tier;
+      el.innerHTML =
+        (c.tier==='legendary' ? '<div class="holo"></div>' : '') +
+        `<div class="tier">${c.tier.toUpperCase()}</div>`+
+        `<div class="name">${c.name}</div>`+
+        `<div class="role">${c.role}</div>`;
+      reveal.appendChild(el);
+      setTimeout(()=>el.classList.add('in'), 220 + i*280);
+      if(c.tier==='legendary') addTilt(el);
+    });
+    setTimeout(()=>again.classList.add('show'), 220 + cards.length*280 + 500);
+  }
 
-  // Boot the app
-  initApp();
+  function addTilt(el){
+    function m(e){ const r=el.getBoundingClientRect(); const p=e.touches?e.touches[0]:e;
+      const x=(p.clientX-r.left)/r.width, y=(p.clientY-r.top)/r.height;
+      el.style.transform=`rotateX(${(y-.5)*-20}deg) rotateY(${(x-.5)*20}deg) scale(1.08)`; }
+    function r(){ el.style.transform=''; }
+    el.addEventListener('mousemove',m); el.addEventListener('mouseleave',r);
+    el.addEventListener('touchmove',e=>{e.preventDefault();m(e);},{passive:false});
+    el.addEventListener('touchend',r);
+  }
+
+  pack.addEventListener('click', open);
+  again.addEventListener('click', resetPackUI);
+
+  // ---- Discord Embedded App SDK ----
+  try {
+    const { DiscordSDK } = await import("https://esm.sh/@discord/embedded-app-sdk@1.2.0");
+    const CLIENT_ID = "1498101411894919331";
+    const sdk = new DiscordSDK(CLIENT_ID);
+    await sdk.ready();
+    const { code } = await sdk.commands.authorize({
+      client_id: CLIENT_ID, response_type: "code", scope: ["identify"],
+    });
+    authCode = code;
+    
+    try {
+      const who = document.getElementById('who');
+      who.textContent = "logging in…";
+      const r = await fetch(PULL_SERVER + "/api/login", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ code: authCode })
+      });
+      const data = await r.json().catch(()=>null);
+      if (data && data.session) {
+        sessionToken = data.session;
+        who.textContent = data.user || "you";
+      } else {
+        who.textContent = "you";
+      }
+    } catch (e) {
+      document.getElementById('who').textContent = "you";
+    }
+  } catch (e) {
+    document.getElementById('who').textContent = "you";
+  }
 </script>
 </body>
 </html>
