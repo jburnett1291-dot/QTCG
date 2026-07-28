@@ -7,6 +7,15 @@ Real pack pulls for the Discord Activity:
   - reads/writes the collection in your GitHub repo (fantasy_save.json), the
     SAME file the bot + Hub use -> everything stays in sync
   - returns the pull so the Activity animates it
+
+ENV VARS (set these in Railway -> Variables):
+  DISCORD_CLIENT_ID       = 1498101411894919331
+  DISCORD_CLIENT_SECRET   = <Developer Portal -> OAuth2>
+  GITHUB_TOKEN            = <same token the bot uses, repo scope>
+  GITHUB_REPO            = jburnett1291-dot/SPAM_HUB
+  SAVE_PATH             = fantasy_save.json      (optional, this is default)
+  POOL_PATH             = fantasy_market.json    (optional; where names+rarity live)
+  PORT                  = (Railway sets this automatically)
 """
 
 import os
@@ -21,10 +30,11 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
-SAVE_PATH = os.environ.get("SAVE_PATH", "activity_pulls.json")
+SAVE_PATH = os.environ.get("SAVE_PATH", "activity_pulls.json")  # pull-server owns THIS file only
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
 
+# odds MUST match the bot's TVT_ODDS / TVT_PACK_SIZE
 ODDS = [("Common", 0.50), ("Uncommon", 0.30), ("Rare", 0.15),
         ("Epic", 0.04), ("Legendary", 0.01)]
 PACK_SIZE = 3
@@ -35,6 +45,7 @@ import base64 as _b64
 
 _SESSION_SECRET = os.environ.get("QCL_SIGNING_SECRET", CLIENT_SECRET or "change-me")
 
+
 def _make_session(uid, name, avatar):
     payload = _b64.urlsafe_b64encode(
         json.dumps({"id": uid, "name": name, "avatar": avatar,
@@ -42,6 +53,7 @@ def _make_session(uid, name, avatar):
     sig = _hmac.new(_SESSION_SECRET.encode(), payload.encode(),
                     _hashlib.sha256).hexdigest()[:16]
     return f"{payload}.{sig}"
+
 
 def _read_session(tok):
     try:
@@ -58,9 +70,11 @@ def _read_session(tok):
     except Exception:
         return None
 
+
 _COOLDOWN = {}
 _COOLDOWN_SECS = 2
 _GH_API = "https://api.github.com"
+
 
 def _cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -68,7 +82,10 @@ def _cors(resp):
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp
 
+
+# ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
 async def _gh_get(session, path):
+    """Return (json_obj, sha) or ({}, None)."""
     url = f"{_GH_API}/repos/{GH_REPO}/contents/{path}"
     headers = {"Authorization": f"token {GH_TOKEN}",
                "Accept": "application/vnd.github+json"}
@@ -82,6 +99,7 @@ async def _gh_get(session, path):
                 return {}, data["sha"]
         return {}, None
 
+
 async def _gh_put(session, path, obj, sha, msg):
     url = f"{_GH_API}/repos/{GH_REPO}/contents/{path}"
     headers = {"Authorization": f"token {GH_TOKEN}",
@@ -94,6 +112,8 @@ async def _gh_put(session, path, obj, sha, msg):
     async with session.put(url, headers=headers, json=body) as r:
         return r.status in (200, 201)
 
+
+# ── pool + draw (server-side, anti-cheat) ──────────────────────────────────
 def _draw(names, rarity):
     buckets = {}
     for n in names:
@@ -110,6 +130,7 @@ def _draw(names, rarity):
         if bucket:
             out.append(random.choice(bucket))
     return out
+
 
 async def _verify_user(session, code):
     data = {"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
@@ -129,6 +150,30 @@ async def _verify_user(session, code):
         print(f"[verify] {e}")
         return None
 
+
+
+async def login(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    code = body.get("code")
+    if not code:
+        return _cors(web.json_response({"error": "no code"}, status=400))
+    async with aiohttp.ClientSession() as session:
+        user = await _verify_user(session, code)
+        if not user:
+            return _cors(web.json_response({"error": "auth failed"}, status=401))
+        uid = str(user.get("id"))
+        sess = _make_session(uid, user.get("global_name") or user.get("username"),
+                             user.get("avatar"))
+    return _cors(web.json_response({
+        "user": user.get("global_name") or user.get("username"),
+        "avatar": user.get("avatar"), "user_id": uid, "session": sess}))
+
+
 async def open_pack(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
@@ -140,12 +185,13 @@ async def open_pack(request):
     session_tok = body.get("session")
 
     async with aiohttp.ClientSession() as session:
+        # returning player: reuse their signed session (no one-time code needed)
         sess = _read_session(session_tok) if session_tok else None
         if sess:
             uid = str(sess["id"])
             user = {"id": uid, "global_name": sess.get("name"),
                     "username": sess.get("name"), "avatar": sess.get("avatar")}
-            new_session = None
+            new_session = None  # already have one
         elif code:
             user = await _verify_user(session, code)
             if not user:
@@ -161,6 +207,9 @@ async def open_pack(request):
             return _cors(web.json_response({"error": "slow down"}, status=429))
         _COOLDOWN[uid] = now
 
+        # pool from the repo. Supports BOTH shapes:
+        #  A) {"names":[...], "rarity":{...}}
+        #  B) {"<PlayerName>": {"tier": "...", ...}, ...}  (your bot's shape)
         pool, _ = await _gh_get(session, POOL_PATH)
         names, rarity = [], {}
         if isinstance(pool, dict) and pool.get("names"):
@@ -171,6 +220,7 @@ async def open_pack(request):
             rarity = {n: (v.get("tier", "Common") if isinstance(v, dict) else "Common")
                       for n, v in pool["cards"].items()}
         elif isinstance(pool, dict):
+            # shape B: top-level = player name -> {tier, ...}
             for n, v in pool.items():
                 if isinstance(v, dict) and ("tier" in v or "cls" in v or "legend" in v):
                     names.append(n)
@@ -180,51 +230,37 @@ async def open_pack(request):
 
         pulled = _draw(names, rarity)
 
+        # mint into activity_pulls.json (ONLY the pull-server writes this file,
+        # so there are no races with the bot). Shape: {uid: {"cards":[], "count":N}}
         pulls, sha = await _gh_get(session, SAVE_PATH)
         if not isinstance(pulls, dict):
             pulls = {}
         entry = pulls.setdefault(uid, {"name": "", "cards": [], "count": 0})
         entry["name"] = user.get("global_name") or user.get("username")
-        
-        # Create the full card objects FIRST, then save them to the JSON
-        cards = [{"name": n, "tier": rarity.get(n, "Common")} for n in pulled]
-        entry["cards"].extend(cards)
-        
+        entry["cards"].extend(pulled)
         entry["count"] = int(entry.get("count", 0)) + len(pulled)
         ok = await _gh_put(session, SAVE_PATH, pulls, sha,
                            f"activity pull: {entry['name']} +{len(pulled)}")
         if not ok:
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
+        cards = [{"name": n, "tier": rarity.get(n, "Common")} for n in pulled]
         resp = {"user": user.get("global_name") or user.get("username"),
                 "avatar": user.get("avatar"), "user_id": uid, "cards": cards}
         if new_session:
             resp["session"] = new_session
         return _cors(web.json_response(resp))
 
-async def get_collection(request):
-    if request.method == "OPTIONS":
-        return _cors(web.Response())
-    try:
-        uid = request.query.get("user_id")
-        if not uid:
-            return _cors(web.json_response({"error": "missing user_id"}, status=400))
-        
-        async with aiohttp.ClientSession() as session:
-            pulls, _ = await _gh_get(session, SAVE_PATH)
-            if not isinstance(pulls, dict):
-                pulls = {}
-            
-            user_data = pulls.get(uid, {"cards": [], "count": 0})
-            return _cors(web.json_response(user_data))
-    except Exception as e:
-        return _cors(web.json_response({"error": str(e)}, status=500))
 
 async def health(request):
     return _cors(web.json_response({"ok": True, "service": "qcl-pull-server",
                                     "repo": GH_REPO}))
 
+
+
 async def diag(request):
+    """Diagnostic: tests each step and reports exactly what works/fails.
+    Open /api/diag in a browser to see where the pull flow breaks."""
     out = {"env": {}, "steps": {}}
     out["env"]["has_client_id"] = bool(CLIENT_ID)
     out["env"]["has_client_secret"] = bool(CLIENT_SECRET)
@@ -233,6 +269,7 @@ async def diag(request):
     out["env"]["pool_path"] = POOL_PATH
     out["env"]["save_path"] = SAVE_PATH
     async with aiohttp.ClientSession() as session:
+        # 1. read pool
         try:
             pool, _ = await _gh_get(session, POOL_PATH)
             names = []
@@ -248,12 +285,14 @@ async def diag(request):
                                           "sample": names[:5]}
         except Exception as e:
             out["steps"]["read_pool"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        # 2. read save
         try:
             save, sha = await _gh_get(session, SAVE_PATH)
             out["steps"]["read_save"] = {"ok": True, "exists": sha is not None,
                                           "users": len(save.get("users", {}))}
         except Exception as e:
             out["steps"]["read_save"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        # 3. WRITE test (the usual culprit) — writes a tiny diag file
         try:
             probe, sha = await _gh_get(session, "pull_server_probe.json")
             ok = await _gh_put(session, "pull_server_probe.json",
@@ -262,17 +301,17 @@ async def diag(request):
                 "note": "if false, the GITHUB_TOKEN can't WRITE (needs repo scope + push access)"}
         except Exception as e:
             out["steps"]["write_repo"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    out["verdict"] = ("ALL GOOD"
+    out["verdict"] = ("ALL GOOD — pulls should save"
                       if all(s.get("ok") for s in out["steps"].values())
-                      else "SOMETHING FAILED")
+                      else "SOMETHING FAILED — see which step ok=false above")
     return _cors(web.json_response(out, status=200))
 
 
 app = web.Application()
+app.router.add_post("/api/login", login)
+app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_pack)
 app.router.add_options("/api/openpack", open_pack)
-app.router.add_get("/api/collection", get_collection)
-app.router.add_options("/api/collection", get_collection)
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/", health)
