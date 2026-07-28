@@ -30,7 +30,7 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
-SAVE_PATH = os.environ.get("SAVE_PATH", "activity_pulls.json")  # pull-server owns THIS file only
+SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # points to master save
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -185,13 +185,12 @@ async def open_pack(request):
     session_tok = body.get("session")
 
     async with aiohttp.ClientSession() as session:
-        # returning player: reuse their signed session (no one-time code needed)
         sess = _read_session(session_tok) if session_tok else None
         if sess:
             uid = str(sess["id"])
             user = {"id": uid, "global_name": sess.get("name"),
                     "username": sess.get("name"), "avatar": sess.get("avatar")}
-            new_session = None  # already have one
+            new_session = None
         elif code:
             user = await _verify_user(session, code)
             if not user:
@@ -207,9 +206,6 @@ async def open_pack(request):
             return _cors(web.json_response({"error": "slow down"}, status=429))
         _COOLDOWN[uid] = now
 
-        # pool from the repo. Supports BOTH shapes:
-        #  A) {"names":[...], "rarity":{...}}
-        #  B) {"<PlayerName>": {"tier": "...", ...}, ...}  (your bot's shape)
         pool, _ = await _gh_get(session, POOL_PATH)
         names, rarity = [], {}
         if isinstance(pool, dict) and pool.get("names"):
@@ -220,7 +216,6 @@ async def open_pack(request):
             rarity = {n: (v.get("tier", "Common") if isinstance(v, dict) else "Common")
                       for n, v in pool["cards"].items()}
         elif isinstance(pool, dict):
-            # shape B: top-level = player name -> {tier, ...}
             for n, v in pool.items():
                 if isinstance(v, dict) and ("tier" in v or "cls" in v or "legend" in v):
                     names.append(n)
@@ -230,17 +225,28 @@ async def open_pack(request):
 
         pulled = _draw(names, rarity)
 
-        # mint into activity_pulls.json (ONLY the pull-server writes this file,
-        # so there are no races with the bot). Shape: {uid: {"cards":[], "count":N}}
-        pulls, sha = await _gh_get(session, SAVE_PATH)
-        if not isinstance(pulls, dict):
-            pulls = {}
-        entry = pulls.setdefault(uid, {"name": "", "cards": [], "count": 0})
-        entry["name"] = user.get("global_name") or user.get("username")
-        entry["cards"].extend(pulled)
-        entry["count"] = int(entry.get("count", 0)) + len(pulled)
-        ok = await _gh_put(session, SAVE_PATH, pulls, sha,
-                           f"activity pull: {entry['name']} +{len(pulled)}")
+        # Read master save (fantasy_save.json)
+        save_data, sha = await _gh_get(session, SAVE_PATH)
+        if not isinstance(save_data, dict):
+            save_data = {}
+        
+        users_dict = save_data.setdefault("users", {})
+        user_entry = users_dict.setdefault(uid, {
+            "name": user.get("global_name") or user.get("username"),
+            "coins": 500,
+            "cards": [],
+            "roster": {"G": None, "F": None, "C": None, "B1": None, "B2": None},
+            "serials": {},
+            "cumulative_fp": 0.0,
+            "history": []
+        })
+
+        # Update user record directly in the shared save schema
+        user_entry["name"] = user.get("global_name") or user.get("username")
+        user_entry["cards"].extend(pulled)
+
+        ok = await _gh_put(session, SAVE_PATH, save_data, sha,
+                           f"activity pack pull: {user_entry['name']} +{len(pulled)}")
         if not ok:
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
@@ -271,19 +277,14 @@ async def get_binder(request):
     
     try:
         async with aiohttp.ClientSession() as session:
-            # 1. Fetch user save from repo
-            pulls, _ = await _gh_get(session, SAVE_PATH)
-            if not isinstance(pulls, dict):
-                pulls = {}
+            save_data, _ = await _gh_get(session, SAVE_PATH)
+            if not isinstance(save_data, dict):
+                save_data = {}
             
-            # Safely get the user data
-            user_data = pulls.get(uid) or {}
-            if not isinstance(user_data, dict):
-                user_data = {}
-                
+            users_dict = save_data.get("users", {})
+            user_data = users_dict.get(uid, {})
             owned_cards = user_data.get("cards", [])
 
-            # 2. Fetch market/pool for rarity info
             pool, _ = await _gh_get(session, POOL_PATH)
             rarity_map = {}
             if isinstance(pool, dict) and pool.get("rarity"):
@@ -296,14 +297,11 @@ async def get_binder(request):
                     if isinstance(v, dict) and "tier" in v:
                         rarity_map[n] = v["tier"]
 
-            # 3. Format response & safely group duplicates regardless of save format
             card_counts = {}
             if isinstance(owned_cards, dict):
-                # If cards were saved as {"Trifecta": 2}
                 for k, v in owned_cards.items():
                     card_counts[k] = int(v) if str(v).isdigit() else 1
             elif isinstance(owned_cards, list):
-                # If cards were saved as ["Trifecta", "Trifecta"] or [{"name": "Trifecta"}]
                 for card in owned_cards:
                     if isinstance(card, str):
                         card_counts[card] = card_counts.get(card, 0) + 1
@@ -313,19 +311,16 @@ async def get_binder(request):
                 
             formatted_cards = []
             for name, count in card_counts.items():
-                # Safely get tier and cast to string (prevents crashes if tier is null/missing)
                 tier_val = rarity_map.get(name, "Common")
                 tier = str(tier_val).lower() if tier_val else "common"
                 formatted_cards.append({"name": str(name), "tier": tier, "count": count})
 
-            # Sort by rarity (Legendary first) then alphabetical
             tier_order = {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
             formatted_cards.sort(key=lambda x: (tier_order.get(x["tier"], 5), x["name"]))
 
         return _cors(web.json_response({"cards": formatted_cards}))
         
     except Exception as e:
-        # If it still crashes, this will display the exact Python error on your frontend
         print(f"[Binder Error] {e}")
         return _cors(web.json_response({"error": f"Server Error: {str(e)}"}, status=500))
 
@@ -337,8 +332,6 @@ async def health(request):
 
 
 async def diag(request):
-    """Diagnostic: tests each step and reports exactly what works/fails.
-    Open /api/diag in a browser to see where the pull flow breaks."""
     out = {"env": {}, "steps": {}}
     out["env"]["has_client_id"] = bool(CLIENT_ID)
     out["env"]["has_client_secret"] = bool(CLIENT_SECRET)
@@ -347,7 +340,6 @@ async def diag(request):
     out["env"]["pool_path"] = POOL_PATH
     out["env"]["save_path"] = SAVE_PATH
     async with aiohttp.ClientSession() as session:
-        # 1. read pool
         try:
             pool, _ = await _gh_get(session, POOL_PATH)
             names = []
@@ -360,17 +352,15 @@ async def diag(request):
                     if isinstance(v, dict) and ("tier" in v or "cls" in v or "legend" in v):
                         names.append(n)
             out["steps"]["read_pool"] = {"ok": bool(names), "player_count": len(names),
-                                          "sample": names[:5]}
+                                         "sample": names[:5]}
         except Exception as e:
             out["steps"]["read_pool"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-        # 2. read save
         try:
             save, sha = await _gh_get(session, SAVE_PATH)
             out["steps"]["read_save"] = {"ok": True, "exists": sha is not None,
-                                          "users": len(save.get("users", {}))}
+                                         "users": len(save.get("users", {}))}
         except Exception as e:
             out["steps"]["read_save"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-        # 3. WRITE test (the usual culprit) — writes a tiny diag file
         try:
             probe, sha = await _gh_get(session, "pull_server_probe.json")
             ok = await _gh_put(session, "pull_server_probe.json",
@@ -388,7 +378,7 @@ async def diag(request):
 app = web.Application()
 app.router.add_post("/api/login", login)
 app.router.add_options("/api/login", login)
-app.router.add_post("/api/openpack", open_pack)
+app.router.add_post("/api/openpack", open_packs := open_pack)
 app.router.add_options("/api/openpack", open_pack)
 app.router.add_post("/api/binder", get_binder)
 app.router.add_options("/api/binder", get_binder)
