@@ -41,7 +41,26 @@
     cursor:not-allowed; opacity:.6; }
 
   /* ---------- BINDER ---------- */
-  .binder-title { font-size:24px; font-weight:800; color:#8b949e; }
+  .binder-title { font-size:24px; font-weight:800; color:#8b949e; margin-bottom:15px; }
+  .binder-grid { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; 
+    width:100%; max-width:800px; padding:10px 20px 60px 20px; overflow-y:auto; max-height:75vh; }
+  
+  /* Mini cards for the binder */
+  .binder-card {
+    width:95px; height:136px; border-radius:10px; position:relative; cursor:default;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-weight:900; box-shadow:0 8px 20px rgba(0,0,0,.4);
+  }
+  .binder-card .tier { font-size:8px; letter-spacing:1px; opacity:.9; }
+  .binder-card .name { font-size:12px; margin-top:6px; text-align:center; padding:0 6px; }
+  .binder-card .badge { position:absolute; top:-6px; right:-6px; background:#ed4245;
+    color:#fff; font-size:11px; font-weight:bold; border-radius:12px; padding:2px 6px;
+    box-shadow:0 2px 8px rgba(0,0,0,.6); z-index:5; }
+  
+  /* Webkit scrollbar for binder */
+  .binder-grid::-webkit-scrollbar { width:6px; }
+  .binder-grid::-webkit-scrollbar-track { background:rgba(0,0,0,.2); border-radius:4px; }
+  .binder-grid::-webkit-scrollbar-thumb { background:rgba(88,101,242,.5); border-radius:4px; }
 
   /* ---------- PACK ---------- */
   .pack {
@@ -82,14 +101,16 @@
   .card .tier { font-size:10px; letter-spacing:1.5px; opacity:.9; }
   .card .name { font-size:16px; margin-top:8px; text-align:center; padding:0 8px; }
   .card .role { font-size:10px; opacity:.7; margin-top:4px; }
-  .common   { background:linear-gradient(135deg,#4b5563,#374151); }
-  .uncommon { background:linear-gradient(135deg,#16a34a,#15803d); }
-  .rare     { background:linear-gradient(135deg,#2563eb,#1e40af); }
-  .epic     { background:linear-gradient(135deg,#7c3aed,#5b21b6); box-shadow:0 0 30px rgba(124,58,237,.55); }
-  .legendary{ background:linear-gradient(135deg,#f59e0b,#d97706); box-shadow:0 0 44px rgba(245,158,11,.7); }
   
-  .legendary .holo {
-    position:absolute; inset:0; border-radius:14px; pointer-events:none;
+  /* Rarity Colors (shared between binder and pack view) */
+  .common, .binder-card.common { background:linear-gradient(135deg,#4b5563,#374151); }
+  .uncommon, .binder-card.uncommon { background:linear-gradient(135deg,#16a34a,#15803d); }
+  .rare, .binder-card.rare { background:linear-gradient(135deg,#2563eb,#1e40af); }
+  .epic, .binder-card.epic { background:linear-gradient(135deg,#7c3aed,#5b21b6); box-shadow:0 0 30px rgba(124,58,237,.55); }
+  .legendary, .binder-card.legendary { background:linear-gradient(135deg,#f59e0b,#d97706); box-shadow:0 0 44px rgba(245,158,11,.7); }
+  
+  .legendary .holo, .binder-card.legendary .holo {
+    position:absolute; inset:0; border-radius:inherit; pointer-events:none;
     background:linear-gradient(115deg,transparent 25%,rgba(255,255,255,.7) 45%,
       rgba(88,101,242,.6) 50%,rgba(0,229,255,.6) 55%,transparent 75%);
     background-size:220% 220%; mix-blend-mode:overlay; animation:holo 2.4s linear infinite;
@@ -130,12 +151,21 @@
   </div>
 
   <!-- BINDER VIEW -->
-  <div id="view-binder" class="view">
+  <div id="view-binder" class="view" style="justify-content: flex-start;">
     <div class="binder-title">Your Collection</div>
-    <div class="cta">Binder features loading...</div>
+    <div id="binder-msg" class="cta" style="margin-top:0;"></div>
+    <div id="binder-grid" class="binder-grid"></div>
   </div>
 
 <script type="module">
+  // ---- CONSTANTS & SETUP ----
+  const IN_DISCORD = location.hostname.endsWith("discordsays.com");
+  const PULL_SERVER = IN_DISCORD
+    ? "/.proxy/railway"
+    : "https://diligent-eagerness-test.up.railway.app";
+  let authCode = null;
+  let sessionToken = null;
+
   // ---- VIEW NAVIGATION LOGIC ----
   const views = document.querySelectorAll('.view');
   const btnBack = document.getElementById('btn-back');
@@ -144,10 +174,9 @@
     views.forEach(v => v.classList.remove('show'));
     document.getElementById(viewId).classList.add('show');
     
-    // Show back button only if we are NOT on the home screen
     if (viewId === 'view-home') {
       btnBack.style.display = 'none';
-      resetPackUI(); // Clean up pack screen if navigating away
+      resetPackUI(); 
     } else {
       btnBack.style.display = 'block';
     }
@@ -160,19 +189,68 @@
   }
 
   document.getElementById('nav-packs').addEventListener('click', () => switchView('view-packs'));
-  document.getElementById('nav-binder').addEventListener('click', () => switchView('view-binder'));
+  
+  // Navigate to binder and trigger fetch
+  document.getElementById('nav-binder').addEventListener('click', () => {
+    switchView('view-binder');
+    fetchBinder();
+  });
+  
   btnBack.addEventListener('click', () => switchView('view-home'));
+
+  // ---- BINDER LOGIC ----
+  const binderGrid = document.getElementById('binder-grid');
+  const binderMsg = document.getElementById('binder-msg');
+
+  async function fetchBinder() {
+    binderGrid.innerHTML = '';
+    binderMsg.textContent = 'Loading your collection from SPAM_HUB...';
+
+    if (!sessionToken && !authCode) {
+        binderMsg.textContent = 'Authentication required. Wait for login or open a pack first.';
+        return;
+    }
+
+    try {
+        const reqBody = sessionToken ? { session: sessionToken } : { code: authCode };
+        const res = await fetch(PULL_SERVER + "/api/binder", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(reqBody)
+        });
+        const data = await res.json();
+        
+        if (data.error) {
+            binderMsg.textContent = data.error;
+            return;
+        }
+
+        if (!data.cards || data.cards.length === 0) {
+            binderMsg.textContent = "Your binder is empty! Go open some packs.";
+            return;
+        }
+
+        binderMsg.textContent = `You own ${data.cards.length} unique cards.`;
+        
+        // Render Cards
+        data.cards.forEach(c => {
+            const el = document.createElement('div');
+            el.className = 'binder-card ' + c.tier;
+            el.innerHTML = 
+                (c.count > 1 ? `<div class="badge">x${c.count}</div>` : '') +
+                (c.tier === 'legendary' ? '<div class="holo"></div>' : '') +
+                `<div class="tier">${c.tier.toUpperCase()}</div>`+
+                `<div class="name">${c.name}</div>`;
+            binderGrid.appendChild(el);
+        });
+    } catch (err) {
+        binderMsg.textContent = 'Failed to connect to the server.';
+    }
+  }
+
 
   // ---- PACK PULL LOGIC ----
   const ODDS = [["legendary",0.01],["epic",0.04],["rare",0.15],["uncommon",0.30],["common",0.50]];
   const PACK_SIZE = 3;
-  const POOL = {
-    legendary: [["Trifecta","3× Champion"],["II WHEEL II","3× Champion"]],
-    epic:      [["iBoola","OPOY"],["DynastyOnTop","MVP"]],
-    rare:      [["Kyglo","6MOY"],["liLurked","DPOY"]],
-    uncommon:  [["Silent Star","All-League"],["Low Ego","All-Def"]],
-    common:    [["Role Player","Contributor"],["Bench Unit","Depth"]],
-  };
 
   function previewPack(){
     return [
@@ -185,13 +263,6 @@
   const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
         cta=document.getElementById('cta'), again=document.getElementById('again');
   let busy=false;
-
-  const IN_DISCORD = location.hostname.endsWith("discordsays.com");
-  const PULL_SERVER = IN_DISCORD
-    ? "/.proxy/railway"
-    : "https://diligent-eagerness-test.up.railway.app";
-  let authCode = null;
-  let sessionToken = null;
 
   async function open(){
     if(busy) return; busy=true; cta.textContent='';
@@ -252,7 +323,7 @@
     el.addEventListener('touchend',r);
   }
 
-  // --- SAFEGUARDS ADDED HERE ---
+  // --- SAFEGUARDS ---
   if (pack) {
     pack.addEventListener('click', open);
   }
