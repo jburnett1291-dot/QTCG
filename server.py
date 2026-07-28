@@ -251,6 +251,62 @@ async def open_pack(request):
             resp["session"] = new_session
         return _cors(web.json_response(resp))
 
+async def get_binder(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+
+    session_tok = body.get("session")
+    if not session_tok:
+        return _cors(web.json_response({"error": "Not authenticated. Let auto-login finish or open a pack first!"}, status=401))
+
+    sess = _read_session(session_tok)
+    if not sess:
+        return _cors(web.json_response({"error": "Session expired."}, status=401))
+
+    uid = str(sess["id"])
+    
+    async with aiohttp.ClientSession() as session:
+        # 1. Fetch user save from repo
+        pulls, _ = await _gh_get(session, SAVE_PATH)
+        if not isinstance(pulls, dict):
+            pulls = {}
+        
+        user_data = pulls.get(uid, {"cards": []})
+        owned_cards = user_data.get("cards", [])
+
+        # 2. Fetch market/pool for rarity info
+        pool, _ = await _gh_get(session, POOL_PATH)
+        rarity_map = {}
+        if isinstance(pool, dict) and pool.get("rarity"):
+            rarity_map = pool["rarity"]
+        elif isinstance(pool, dict) and pool.get("cards"):
+            rarity_map = {n: (v.get("tier", "Common") if isinstance(v, dict) else "Common")
+                          for n, v in pool["cards"].items()}
+        elif isinstance(pool, dict):
+            for n, v in pool.items():
+                if isinstance(v, dict) and "tier" in v:
+                    rarity_map[n] = v["tier"]
+
+        # 3. Format response (group duplicates)
+        card_counts = {}
+        for card in owned_cards:
+            card_counts[card] = card_counts.get(card, 0) + 1
+            
+        formatted_cards = []
+        for name, count in card_counts.items():
+            tier = rarity_map.get(name, "Common").lower()
+            formatted_cards.append({"name": name, "tier": tier, "count": count})
+
+        # Sort by rarity (Legendary first) then alphabetical
+        tier_order = {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
+        formatted_cards.sort(key=lambda x: (tier_order.get(x["tier"], 5), x["name"]))
+
+    return _cors(web.json_response({"cards": formatted_cards}))
+
 
 async def health(request):
     return _cors(web.json_response({"ok": True, "service": "qcl-pull-server",
@@ -312,6 +368,8 @@ app.router.add_post("/api/login", login)
 app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_pack)
 app.router.add_options("/api/openpack", open_pack)
+app.router.add_post("/api/binder", get_binder)
+app.router.add_options("/api/binder", get_binder)
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/", health)
