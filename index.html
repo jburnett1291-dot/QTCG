@@ -90,11 +90,10 @@
     max-width:680px; padding:0 16px; perspective:1000px; }
   .reveal.show { display:flex; }
   .card {
-    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer; overflow:hidden;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer;
     font-weight:900; opacity:0; transform:translateY(46px) rotateY(90deg);
-    box-shadow:0 14px 38px rgba(0,0,0,.55); transform-style:preserve-3d;
-    transition:transform .15s ease-out;
+    box-shadow:0 14px 38px rgba(0,0,0,.55);
+    transition:transform .15s ease-out; perspective:900px;
   }
   .card.in { animation:flip .65s cubic-bezier(.2,.9,.3,1.2) forwards; }
   @keyframes flip { to{opacity:1;transform:translateY(0) rotateY(0);} }
@@ -133,13 +132,38 @@
     width:100%; text-align:center; padding:2px 0; }
   .binder-card.no-art .art { display:none; }
 
-  .card .art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-    border-radius:14px; z-index:1; background:#12151f; }
+  .face.front .art, .card .art { position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; border-radius:14px; z-index:1; background:#12151f; }
   .card .art.missing { display:none; }
-  .card.has-art .tier, .card.has-art .name, .card.has-art .role { position:relative; z-index:2;
+  .card.has-art .tier, .card.has-art .name, .card.has-art .role, .face.front .tier, .face.front .name, .face.front .role { position:relative; z-index:2;
     text-shadow:0 1px 5px rgba(0,0,0,.9); }
   .card.has-art .name { background:rgba(0,0,0,.5); border-radius:6px; padding:1px 6px; }
   .card.no-art .art { display:none; }
+
+  /* ---- CARD FLIP (front art / back stats) ---- */
+  .card { perspective: 900px; }
+  .flip-inner { position:absolute; inset:0; transform-style:preserve-3d;
+    transition: transform .5s cubic-bezier(.2,.8,.3,1.1); }
+  .card.flipped .flip-inner { transform: rotateY(180deg); }
+  .face { position:absolute; inset:0; border-radius:14px; backface-visibility:hidden;
+    -webkit-backface-visibility:hidden; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; overflow:hidden; }
+  .face.back { transform: rotateY(180deg); background:linear-gradient(160deg,#12151f,#1c2233);
+    padding:12px 10px; justify-content:flex-start; }
+  .back-title { color:#fff; font-size:15px; font-weight:900; margin-top:6px;
+    text-align:center; }
+  .award { color:#f1c40f; font-size:11px; font-weight:800; margin:4px 0 8px;
+    text-align:center; }
+  .stat-block { width:100%; display:flex; flex-direction:column; gap:4px; }
+  .stat-row { display:flex; justify-content:space-between; padding:2px 8px;
+    background:rgba(255,255,255,.05); border-radius:5px; }
+  .sl { color:#8b949e; font-size:10px; font-weight:700; text-transform:uppercase; }
+  .sv { color:#e6edf3; font-size:11px; font-weight:800; }
+  .stat-empty { color:#8b949e; font-size:11px; text-align:center; margin-top:20px; }
+  .flip-hint { position:absolute; bottom:6px; left:0; right:0; text-align:center;
+    color:rgba(255,255,255,.4); font-size:8px; letter-spacing:.5px; }
+  /* front face keeps the art/holo; make sure they live in .front now */
+  .face.front { background:linear-gradient(135deg,#232a3d,#12151f); }
 </style>
 </head>
 <body>
@@ -319,21 +343,44 @@
     },1240);
   }
 
+  function statLine(label, val){
+    if(val === undefined || val === null || val === '' || val === 0) return '';
+    return `<div class="stat-row"><span class="sl">${label}</span><span class="sv">${val}</span></div>`;
+  }
+  function cardBack(c){
+    const s = c.stats || {};
+    let rows =
+      statLine('Archetype', s.archetype) +
+      statLine('Games', s.gp) +
+      statLine('Legend', s.legend) +
+      statLine('Perf', s.perf) +
+      statLine('Longevity', s.long) +
+      statLine('Hardware', s.hard);
+    if(!rows) rows = '<div class="stat-empty">Stats coming soon</div>';
+    const award = c.role ? `<div class="award">🏆 ${c.role}</div>` : '';
+    return `<div class="back-title">${c.name}</div>${award}<div class="stat-block">${rows}</div>`+
+           `<div class="flip-hint">tap to flip back</div>`;
+  }
   function show(cards){
     reveal.innerHTML=''; reveal.classList.add('show');
     cards.forEach((c,i)=>{
       const el=document.createElement('div');
       el.className='card '+c.tier+(c.img?' has-art':'');
-      let inner=(c.tier==='legendary' ? '<div class="holo"></div>' : '');
-      if(c.img){ inner+=`<img class="art" src="${c.img}" alt="${c.name}" `+
-        `onerror="this.classList.add('missing');this.parentElement.classList.add('no-art');">`; }
-      inner+=`<div class="tier">${c.tier.toUpperCase()}</div>`+
+      // front face
+      let front=(c.tier==='legendary' ? '<div class="holo"></div>' : '');
+      if(c.img){ front+=`<img class="art" src="${c.img}" alt="${c.name}" `+
+        `onerror="this.classList.add('missing');this.closest('.card').classList.add('no-art');">`; }
+      front+=`<div class="tier">${c.tier.toUpperCase()}</div>`+
         `<div class="name">${c.name}</div>`+
-        `<div class="role">${c.role||''}</div>`;
-      el.innerHTML=inner;
+        `<div class="role">${c.role||''}</div>`+
+        `<div class="flip-hint">tap for stats</div>`;
+      // two-face flip structure
+      el.innerHTML=`<div class="flip-inner"><div class="face front">${front}</div>`+
+                   `<div class="face back">${cardBack(c)}</div></div>`;
+      // click flips (but not during entrance)
+      el.addEventListener('click', ()=>{ el.classList.toggle('flipped'); });
       reveal.appendChild(el);
       setTimeout(()=>el.classList.add('in'), 220 + i*280);
-      if(c.tier==='legendary') addTilt(el);
     });
     setTimeout(()=>again.classList.add('show'), 220 + cards.length*280 + 500);
   }
