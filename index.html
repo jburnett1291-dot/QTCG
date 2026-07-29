@@ -346,11 +346,12 @@
             if (c.img) {
                 const f = el.querySelector('.face.front');
                 const probe = new Image();
+                const safeUrl = PULL_SERVER + "/api/img?url=" + encodeURIComponent(c.img);
                 probe.onload = () => { 
-                    f.style.backgroundImage = `url("${c.img}")`;
+                    f.style.backgroundImage = `url("${safeUrl}")`;
                     el.classList.add('has-art'); 
                 };
-                probe.src = c.img;
+                probe.src = safeUrl;
             }
 
             el.querySelector('.info-btn').addEventListener('click', (ev)=>{
@@ -448,11 +449,12 @@
       if(c.img){
         const f=el.querySelector('.face.front');
         const probe=new Image();
+        const safeUrl = PULL_SERVER + "/api/img?url=" + encodeURIComponent(c.img);
         probe.onload=()=>{ 
-            f.style.backgroundImage=`url("${c.img}")`; 
+            f.style.backgroundImage=`url("${safeUrl}")`; 
             el.classList.add('has-art'); 
         };
-        probe.src=c.img;
+        probe.src = safeUrl;
       }
       el.addEventListener('click', ()=>{ el.classList.toggle('flipped'); });
       reveal.appendChild(el);
