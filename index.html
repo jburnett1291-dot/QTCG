@@ -123,8 +123,7 @@
   .again.show { display:block; }
 
   /* real card art fills the mini card */
-  .binder-card .art { position:absolute; inset:0; width:100%; height:100%;
-    object-fit:cover; border-radius:10px; z-index:1; background:#12151f; }
+  
   .binder-card .art.missing { display:none; }
   .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
     text-shadow:0 1px 4px rgba(0,0,0,.9); }
@@ -191,7 +190,7 @@
     font-size:11px; font-weight:900; cursor:pointer; line-height:1;
     display:flex; align-items:center; justify-content:center; }
   .info-btn:hover { background:#5865F2; }
-  .binder-card .art { z-index:1; }
+  
   .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
     text-shadow:0 1px 4px rgba(0,0,0,.9); }
 
@@ -203,6 +202,12 @@
     text-transform:uppercase; letter-spacing:.5px; margin-top:2px; z-index:2; }
   .binder-card .statline { color:#e6edf3; font-size:8px; font-weight:800;
     margin-top:3px; z-index:2; }
+
+  .binder-card .face .art { position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; border-radius:10px; z-index:1; background:#12151f; display:block; }
+  .binder-card .face .art.missing { display:none; }
+  .binder-card.has-art .avatar-circle { display:none; }
+  .binder-card.has-art .arch, .binder-card.has-art .statline { display:none; }
 </style>
 </head>
 <body>
@@ -321,14 +326,15 @@
             if (c.img) {
                 // real card art from SPAM_HUB; if it fails to load, fall back to text
                 inner += `<img class="art" src="${c.img}" alt="${c.name}" ` +
-                         `onerror="this.classList.add('missing');this.parentElement.classList.add('no-art');">`;
+                         `onerror="this.classList.add('missing');this.closest('.binder-card').classList.add('no-art');">`;
             }
             // rich designed front: avatar initials + name + archetype + stat line
             const initials = (c.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase() || '?';
             const s0 = c.stats || {};
             const arch = s0.archetype ? `<div class="arch">${s0.archetype}</div>` : '';
-            const ppg = (s0.ppg!==undefined && s0.ppg!==null && s0.ppg!=='') ?
-                        `<div class="statline">${s0.ppg} PPG</div>` : '';
+            const hasReal = (s0.ppg!==undefined && s0.ppg!==null && s0.ppg!=='');
+            const ppg = hasReal ?
+                        `<div class="statline">${s0.ppg} PPG · ${s0.rpg||0} RPG · ${s0.apg||0} APG</div>` : '';
             if(!c.img){
               inner += `<div class="avatar-circle">${initials}</div>`;
             }
@@ -340,8 +346,10 @@
             const s = c.stats || {};
             const row = (l,v)=> (v===undefined||v===null||v===''||v===0)?'':
                 `<div class="stat-row"><span class="sl">${l}</span><span class="sv">${v}</span></div>`;
-            let statRows = row('Arch', s.archetype)+row('GP', s.gp)+row('Legend', s.legend)+
-                        row('Perf', s.perf)+row('Long', s.long)+row('Hard', s.hard);
+            let statRows = row('Arch', s.archetype)+row('GP', s.gp)+
+                        row('PPG', s.ppg)+row('RPG', s.rpg)+row('APG', s.apg)+
+                        row('SPG', s.spg)+row('BPG', s.bpg)+row('FP', s.fp)+
+                        row('Legend', s.legend)+row('Perf', s.perf);
             if(!statRows) statRows = '<div class="stat-empty">No stats yet</div>';
             const back = `<div class="back-title">${c.name}</div>` +
                          `<div class="stat-block">${statRows}</div>` +
