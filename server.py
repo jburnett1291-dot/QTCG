@@ -430,6 +430,26 @@ async def get_binder(request):
         return _cors(web.json_response({"error": f"Server Error: {str(e)}"}, status=500))
 
 
+
+async def cards_debug(request):
+    """Diagnostic: what card files does the server see, and how do names map?"""
+    out = {}
+    async with aiohttp.ClientSession() as session:
+        cat = await _card_catalog(session)
+        out["stem_count"] = len(cat.get("stems", []))
+        out["sample_files"] = [s[0] for s in cat.get("stems", [])[:15]]
+        out["meta_player_count"] = len(cat.get("by_player", {}))
+        out["meta_sample"] = list(cat.get("by_player", {}).keys())[:15]
+        # test-resolve some names
+        tests = ["Kyglo", "iBoola", "DynastyOnTop", "ThaGap", "YPFRAS",
+                 "IIHurz", "Trifecta"]
+        out["resolutions"] = {}
+        for t in tests:
+            url = _card_img_from_catalog(t, cat)
+            out["resolutions"][t] = url.split("/")[-1] if url else "NO MATCH"
+    return _cors(web.json_response(out))
+
+
 async def health(request):
     return _cors(web.json_response({"ok": True, "service": "qcl-pull-server",
                                     "repo": GH_REPO}))
@@ -489,6 +509,7 @@ app.router.add_post("/api/binder", get_binder)
 app.router.add_options("/api/binder", get_binder)
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
+app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/", health)
 
 if __name__ == "__main__":
