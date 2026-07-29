@@ -47,7 +47,7 @@
   
   /* Mini cards for the binder */
   .binder-card {
-    width:95px; height:136px; border-radius:10px; position:relative; cursor:default; overflow:hidden;
+    width:95px; height:136px; border-radius:10px; position:relative; cursor:default; perspective:800px; 
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     font-weight:900; box-shadow:0 8px 20px rgba(0,0,0,.4);
   }
@@ -164,6 +164,45 @@
     color:rgba(255,255,255,.4); font-size:8px; letter-spacing:.5px; }
   /* front face keeps the art/holo; make sure they live in .front now */
   .face.front { background:linear-gradient(135deg,#232a3d,#12151f); }
+
+  /* ---- BINDER CARD FLIP ---- */
+  .binder-card { perspective:800px; }
+  .binder-card .flip-inner { position:absolute; inset:0; transform-style:preserve-3d;
+    transition:transform .5s cubic-bezier(.2,.8,.3,1.1); }
+  .binder-card.flipped .flip-inner { transform:rotateY(180deg); }
+  .binder-card .face { position:absolute; inset:0; border-radius:10px;
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; }
+  .binder-card .face.front { background:linear-gradient(135deg,#232a3d,#12151f); }
+  .binder-card .face.back { transform:rotateY(180deg);
+    background:linear-gradient(160deg,#12151f,#1c2233); padding:8px 6px;
+    justify-content:flex-start; }
+  .binder-card .back-title { color:#fff; font-size:11px; font-weight:900;
+    text-align:center; margin:4px 0 6px; }
+  .binder-card .stat-block { width:100%; display:flex; flex-direction:column; gap:3px; }
+  .binder-card .stat-row { display:flex; justify-content:space-between; padding:1px 5px;
+    background:rgba(255,255,255,.05); border-radius:4px; }
+  .binder-card .sl { color:#8b949e; font-size:8px; font-weight:700; text-transform:uppercase; }
+  .binder-card .sv { color:#e6edf3; font-size:9px; font-weight:800; }
+  .binder-card .stat-empty { color:#8b949e; font-size:9px; text-align:center; margin-top:16px; }
+  .info-btn { position:absolute; top:4px; right:4px; z-index:5; width:18px; height:18px;
+    border-radius:50%; border:none; background:rgba(0,0,0,.55); color:#fff;
+    font-size:11px; font-weight:900; cursor:pointer; line-height:1;
+    display:flex; align-items:center; justify-content:center; }
+  .info-btn:hover { background:#5865F2; }
+  .binder-card .art { z-index:1; }
+  .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
+    text-shadow:0 1px 4px rgba(0,0,0,.9); }
+
+  .binder-card .avatar-circle { width:46px; height:46px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.35); display:flex; align-items:center;
+    justify-content:center; font-size:16px; font-weight:900; color:#fff;
+    background:rgba(255,255,255,.08); margin-bottom:6px; z-index:2; }
+  .binder-card .arch { color:#8b949e; font-size:7px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.5px; margin-top:2px; z-index:2; }
+  .binder-card .statline { color:#e6edf3; font-size:8px; font-weight:800;
+    margin-top:3px; z-index:2; }
 </style>
 </head>
 <body>
@@ -284,9 +323,35 @@
                 inner += `<img class="art" src="${c.img}" alt="${c.name}" ` +
                          `onerror="this.classList.add('missing');this.parentElement.classList.add('no-art');">`;
             }
+            // rich designed front: avatar initials + name + archetype + stat line
+            const initials = (c.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase() || '?';
+            const s0 = c.stats || {};
+            const arch = s0.archetype ? `<div class="arch">${s0.archetype}</div>` : '';
+            const ppg = (s0.ppg!==undefined && s0.ppg!==null && s0.ppg!=='') ?
+                        `<div class="statline">${s0.ppg} PPG</div>` : '';
+            if(!c.img){
+              inner += `<div class="avatar-circle">${initials}</div>`;
+            }
             inner += `<div class="tier">${c.tier.toUpperCase()}</div>` +
-                     `<div class="name">${c.name}</div>`;
-            el.innerHTML = inner;
+                     `<div class="name">${c.name}</div>` +
+                     arch + ppg +
+                     `<button class="info-btn" title="Stats">i</button>`;
+            // BACK face (stats)
+            const s = c.stats || {};
+            const row = (l,v)=> (v===undefined||v===null||v===''||v===0)?'':
+                `<div class="stat-row"><span class="sl">${l}</span><span class="sv">${v}</span></div>`;
+            let statRows = row('Arch', s.archetype)+row('GP', s.gp)+row('Legend', s.legend)+
+                        row('Perf', s.perf)+row('Long', s.long)+row('Hard', s.hard);
+            if(!statRows) statRows = '<div class="stat-empty">No stats yet</div>';
+            const back = `<div class="back-title">${c.name}</div>` +
+                         `<div class="stat-block">${statRows}</div>` +
+                         `<button class="info-btn back-btn" title="Back">×</button>`;
+            el.innerHTML = `<div class="flip-inner"><div class="face front">${inner}</div>` +
+                           `<div class="face back">${back}</div></div>`;
+            el.querySelector('.info-btn').addEventListener('click', (ev)=>{
+                ev.stopPropagation(); el.classList.add('flipped'); });
+            el.querySelector('.back-btn').addEventListener('click', (ev)=>{
+                ev.stopPropagation(); el.classList.remove('flipped'); });
             binderGrid.appendChild(el);
         });
     } catch (err) {
