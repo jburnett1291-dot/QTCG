@@ -218,6 +218,12 @@
   .binder-card .face .art, .card .face .art { background:transparent; }
   /* keep the flip/info button visible above art */
   .info-btn { z-index:6 !important; }
+
+  /* background-image card art (bulletproof fill) */
+  .binder-card .face.front { background-size:cover; background-position:center;
+    background-repeat:no-repeat; }
+  .card .face.front { background-size:cover; background-position:center;
+    background-repeat:no-repeat; }
 </style>
 </head>
 <body>
@@ -333,11 +339,7 @@
             el.className = 'binder-card ' + c.tier + (c.img ? ' has-art' : '');
             let inner = (c.count > 1 ? `<div class="badge">x${c.count}</div>` : '') +
                 (c.tier === 'legendary' ? '<div class="holo"></div>' : '');
-            if (c.img) {
-                // real card art from SPAM_HUB; if it fails to load, fall back to text
-                inner += `<img class="art" src="${c.img}?v=2" alt="${c.name}" loading="lazy" ` +
-                         `onerror="this.classList.add('missing');this.closest('.binder-card').classList.add('no-art');">`;
-            }
+            // art applied as background-image after render
             // rich designed front: avatar initials + name + archetype + stat line
             const initials = (c.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase() || '?';
             const s0 = c.stats || {};
@@ -366,6 +368,14 @@
                          `<button class="info-btn back-btn" title="Back">×</button>`;
             el.innerHTML = `<div class="flip-inner"><div class="face front">${inner}</div>` +
                            `<div class="face back">${back}</div></div>`;
+            if (c.img) {
+                const f = el.querySelector('.face.front');
+                const probe = new Image();
+                probe.onload = () => { f.style.backgroundImage = `url("${c.img}")`;
+                    el.classList.add('has-art'); };
+                probe.onerror = () => { el.classList.remove('has-art'); el.classList.add('no-art'); };
+                probe.src = c.img;
+            }
             el.querySelector('.info-btn').addEventListener('click', (ev)=>{
                 ev.stopPropagation(); el.classList.add('flipped'); });
             el.querySelector('.back-btn').addEventListener('click', (ev)=>{
@@ -451,8 +461,7 @@
       el.className='card '+c.tier+(c.img?' has-art':'');
       // front face
       let front=(c.tier==='legendary' ? '<div class="holo"></div>' : '');
-      if(c.img){ front+=`<img class="art" src="${c.img}" alt="${c.name}" `+
-        `onerror="this.classList.add('missing');this.closest('.card').classList.add('no-art');">`; }
+      // art applied as background below
       front+=`<div class="tier">${c.tier.toUpperCase()}</div>`+
         `<div class="name">${c.name}</div>`+
         `<div class="role">${c.role||''}</div>`+
@@ -460,7 +469,13 @@
       // two-face flip structure
       el.innerHTML=`<div class="flip-inner"><div class="face front">${front}</div>`+
                    `<div class="face back">${cardBack(c)}</div></div>`;
-      // click flips (but not during entrance)
+      if(c.img){
+        const f=el.querySelector('.face.front');
+        const probe=new Image();
+        probe.onload=()=>{ f.style.backgroundImage=`url("${c.img}")`; el.classList.add('has-art'); };
+        probe.onerror=()=>{ el.classList.remove('has-art'); el.classList.add('no-art'); };
+        probe.src=c.img;
+      }
       el.addEventListener('click', ()=>{ el.classList.toggle('flipped'); });
       reveal.appendChild(el);
       setTimeout(()=>el.classList.add('in'), 220 + i*280);
