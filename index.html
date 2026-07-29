@@ -47,7 +47,7 @@
   
   /* Mini cards for the binder */
   .binder-card {
-    width:95px; height:136px; border-radius:10px; position:relative; cursor:default;
+    width:95px; height:136px; border-radius:10px; position:relative; cursor:default; overflow:hidden;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     font-weight:900; box-shadow:0 8px 20px rgba(0,0,0,.4);
   }
@@ -90,7 +90,7 @@
     max-width:680px; padding:0 16px; perspective:1000px; }
   .reveal.show { display:flex; }
   .card {
-    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer;
+    width:130px; height:186px; border-radius:14px; position:relative; cursor:pointer; overflow:hidden;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     font-weight:900; opacity:0; transform:translateY(46px) rotateY(90deg);
     box-shadow:0 14px 38px rgba(0,0,0,.55); transform-style:preserve-3d;
@@ -125,7 +125,7 @@
 
   /* real card art fills the mini card */
   .binder-card .art { position:absolute; inset:0; width:100%; height:100%;
-    object-fit:cover; border-radius:10px; z-index:1; }
+    object-fit:cover; border-radius:10px; z-index:1; background:#12151f; }
   .binder-card .art.missing { display:none; }
   .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
     text-shadow:0 1px 4px rgba(0,0,0,.9); }
@@ -134,7 +134,7 @@
   .binder-card.no-art .art { display:none; }
 
   .card .art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-    border-radius:14px; z-index:1; }
+    border-radius:14px; z-index:1; background:#12151f; }
   .card .art.missing { display:none; }
   .card.has-art .tier, .card.has-art .name, .card.has-art .role { position:relative; z-index:2;
     text-shadow:0 1px 5px rgba(0,0,0,.9); }
