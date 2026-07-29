@@ -203,8 +203,9 @@
   .binder-card .statline { color:#e6edf3; font-size:8px; font-weight:800;
     margin-top:3px; z-index:2; }
 
-  .binder-card .face .art { position:absolute; inset:0; width:100%; height:100%;
-    object-fit:contain; border-radius:10px; z-index:1; background:#12151f; display:block; }
+  .binder-card .face .art { position:absolute !important; inset:0 !important; width:100% !important;
+    height:100% !important; object-fit:contain !important; border-radius:10px; z-index:1;
+    background:#0d1117; display:block !important; max-width:none; max-height:none; }
   .binder-card .face .art.missing { display:none; }
   .binder-card.has-art .avatar-circle { display:none; }
   .binder-card.has-art .arch, .binder-card.has-art .statline { display:none; }
@@ -334,7 +335,7 @@
                 (c.tier === 'legendary' ? '<div class="holo"></div>' : '');
             if (c.img) {
                 // real card art from SPAM_HUB; if it fails to load, fall back to text
-                inner += `<img class="art" src="${c.img}" alt="${c.name}" ` +
+                inner += `<img class="art" src="${c.img}?v=2" alt="${c.name}" loading="lazy" ` +
                          `onerror="this.classList.add('missing');this.closest('.binder-card').classList.add('no-art');">`;
             }
             // rich designed front: avatar initials + name + archetype + stat line
