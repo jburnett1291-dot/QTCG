@@ -122,6 +122,24 @@
     background:#5865F2; color:#fff; font-weight:800; font-size:15px; cursor:pointer;
     display:none; box-shadow:0 8px 24px rgba(88,101,242,.5); }
   .again.show { display:block; }
+
+  /* real card art fills the mini card */
+  .binder-card .art { position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; border-radius:10px; z-index:1; }
+  .binder-card .art.missing { display:none; }
+  .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
+    text-shadow:0 1px 4px rgba(0,0,0,.9); }
+  .binder-card.has-art .name { background:rgba(0,0,0,.55); border-radius:0 0 10px 10px;
+    width:100%; text-align:center; padding:2px 0; }
+  .binder-card.no-art .art { display:none; }
+
+  .card .art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    border-radius:14px; z-index:1; }
+  .card .art.missing { display:none; }
+  .card.has-art .tier, .card.has-art .name, .card.has-art .role { position:relative; z-index:2;
+    text-shadow:0 1px 5px rgba(0,0,0,.9); }
+  .card.has-art .name { background:rgba(0,0,0,.5); border-radius:6px; padding:1px 6px; }
+  .card.no-art .art { display:none; }
 </style>
 </head>
 <body>
@@ -234,12 +252,17 @@
         // Render Cards
         data.cards.forEach(c => {
             const el = document.createElement('div');
-            el.className = 'binder-card ' + c.tier;
-            el.innerHTML = 
-                (c.count > 1 ? `<div class="badge">x${c.count}</div>` : '') +
-                (c.tier === 'legendary' ? '<div class="holo"></div>' : '') +
-                `<div class="tier">${c.tier.toUpperCase()}</div>`+
-                `<div class="name">${c.name}</div>`;
+            el.className = 'binder-card ' + c.tier + (c.img ? ' has-art' : '');
+            let inner = (c.count > 1 ? `<div class="badge">x${c.count}</div>` : '') +
+                (c.tier === 'legendary' ? '<div class="holo"></div>' : '');
+            if (c.img) {
+                // real card art from SPAM_HUB; if it fails to load, fall back to text
+                inner += `<img class="art" src="${c.img}" alt="${c.name}" ` +
+                         `onerror="this.classList.add('missing');this.parentElement.classList.add('no-art');">`;
+            }
+            inner += `<div class="tier">${c.tier.toUpperCase()}</div>` +
+                     `<div class="name">${c.name}</div>`;
+            el.innerHTML = inner;
             binderGrid.appendChild(el);
         });
     } catch (err) {
@@ -283,7 +306,7 @@
         if(result.session){ sessionToken = result.session; }
         if(result.user){ document.getElementById('who').textContent = result.user; }
         show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
-                                   name:c.name, role:''})));
+                                   name:c.name, role:'', img:c.img})));
       } else if(!authCode){
         cta.textContent = "Preview mode (open inside Discord to save real pulls)";
         show(previewPack());
@@ -300,12 +323,14 @@
     reveal.innerHTML=''; reveal.classList.add('show');
     cards.forEach((c,i)=>{
       const el=document.createElement('div');
-      el.className='card '+c.tier;
-      el.innerHTML =
-        (c.tier==='legendary' ? '<div class="holo"></div>' : '') +
-        `<div class="tier">${c.tier.toUpperCase()}</div>`+
+      el.className='card '+c.tier+(c.img?' has-art':'');
+      let inner=(c.tier==='legendary' ? '<div class="holo"></div>' : '');
+      if(c.img){ inner+=`<img class="art" src="${c.img}" alt="${c.name}" `+
+        `onerror="this.classList.add('missing');this.parentElement.classList.add('no-art');">`; }
+      inner+=`<div class="tier">${c.tier.toUpperCase()}</div>`+
         `<div class="name">${c.name}</div>`+
-        `<div class="role">${c.role}</div>`;
+        `<div class="role">${c.role||''}</div>`;
+      el.innerHTML=inner;
       reveal.appendChild(el);
       setTimeout(()=>el.classList.add('in'), 220 + i*280);
       if(c.tier==='legendary') addTilt(el);
