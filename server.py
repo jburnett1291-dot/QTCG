@@ -290,6 +290,154 @@ async def login(request):
         "avatar": user.get("avatar"), "user_id": uid, "session": sess}))
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  STARTER PACKS — onboarding: pick a strategy, get curated players + 500 coins
+# ═══════════════════════════════════════════════════════════════════════════
+
+STARTER_PACKS = {
+    "glass_cleaner": {"name": "The Glass Cleaner Pack",
+        "desc": "2 Rebounding Bigs + 1 Scoring Guard — high floor.",
+        "recipe": [("rebounder", 2), ("scorer", 1)]},
+    "floor_general": {"name": "The Floor General Pack",
+        "desc": "2 Playmaking Guards + 1 Finishing Big — efficiency & multipliers.",
+        "recipe": [("playmaker", 2), ("finisher", 1)]},
+    "pure_scorer": {"name": "The Pure Scorer Pack",
+        "desc": "2 Shot-Creating Wings + 1 Defensive Anchor — high ceiling, high risk.",
+        "recipe": [("scorer", 2), ("defender", 1)]},
+    "lockdown": {"name": "The Lockdown Pack",
+        "desc": "2 Defensive Specialists + 1 Two-Way Wing — the disruptor.",
+        "recipe": [("defender", 2), ("scorer", 1)]},
+}
+
+
+def _classify_players(pstats):
+    """Bucket players into roles from their real stats. Returns {role: [names]}."""
+    buckets = {"rebounder": [], "playmaker": [], "scorer": [],
+               "defender": [], "finisher": []}
+    for name, s in pstats.items():
+        if not isinstance(s, dict):
+            continue
+        ppg = float(s.get("ppg") or 0); rpg = float(s.get("rpg") or 0)
+        apg = float(s.get("apg") or 0); spg = float(s.get("spg") or 0)
+        bpg = float(s.get("bpg") or 0)
+        # score each role, assign to the strongest (with sensible thresholds)
+        scores = {
+            "rebounder": rpg * 2.0 + bpg,
+            "playmaker": apg * 2.0 + spg,
+            "scorer": ppg,
+            "defender": (spg + bpg) * 3.0,
+            "finisher": ppg * 0.6 + rpg,
+        }
+        # a player can qualify for multiple pools they're strong in
+        for role, val in scores.items():
+            buckets[role].append((name, val))
+    # sort each bucket by strength desc
+    for role in buckets:
+        buckets[role].sort(key=lambda x: x[1], reverse=True)
+        buckets[role] = [n for n, _ in buckets[role]]
+    return buckets
+
+
+def _build_starter(pack_key, pstats):
+    """Return a list of player names for the chosen starter pack."""
+    import random as _r
+    pack = STARTER_PACKS.get(pack_key)
+    if not pack:
+        return None
+    buckets = _classify_players(pstats)
+    chosen, used = [], set()
+    for role, count in pack["recipe"]:
+        pool_r = [n for n in buckets.get(role, []) if n not in used]
+        # take from the TOP third for quality, randomized within it
+        top = pool_r[:max(count * 4, 8)] or pool_r
+        _r.shuffle(top)
+        for n in top[:count]:
+            chosen.append(n); used.add(n)
+    return chosen
+
+
+async def claim_starter(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    session_tok = body.get("session")
+    pack_key = body.get("pack")
+    sess = _read_session(session_tok) if session_tok else None
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    if pack_key not in STARTER_PACKS:
+        return _cors(web.json_response({"error": "unknown pack"}, status=400))
+    uid = str(sess["id"])
+
+    async with aiohttp.ClientSession() as session:
+        save_data, sha = await _gh_get(session, SAVE_PATH)
+        if not isinstance(save_data, dict):
+            save_data = {}
+        users_dict = save_data.setdefault("users", {})
+        entry = users_dict.setdefault(uid, {
+            "name": sess.get("name"), "coins": 0, "cards": [],
+            "roster": {"G": None, "F": None, "C": None, "B1": None, "B2": None},
+            "serials": {}, "cumulative_fp": 0.0, "history": []})
+
+        # CLAIM-ONCE guard
+        if entry.get("starter_claimed"):
+            return _cors(web.json_response({"error": "starter already claimed",
+                                            "already": True}, status=409))
+
+        pstats = await _load_player_stats(session)
+        if not pstats:
+            return _cors(web.json_response({"error": "stats not published yet"}, status=503))
+        picks = _build_starter(pack_key, pstats)
+        if not picks:
+            return _cors(web.json_response({"error": "could not build pack"}, status=500))
+
+        entry["cards"].extend(picks)
+        entry["coins"] = int(entry.get("coins", 0)) + 500
+        entry["starter_claimed"] = pack_key
+        entry["name"] = sess.get("name")
+
+        ok = await _gh_put(session, SAVE_PATH, save_data, sha,
+                           f"starter [{pack_key}]: {entry['name']} +{len(picks)} +500c")
+        if not ok:
+            return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
+
+        # decorate for the reveal
+        _cat = await _card_catalog(session)
+        cards = []
+        for n in picks:
+            rs = _real_stats(n, pstats)
+            cards.append({"name": n, "tier": rarity_lookup(n) if 'rarity_lookup' in globals() else "Common",
+                          "img": _card_img_from_catalog(n, _cat),
+                          "stats": {"ppg": rs.get("ppg"), "rpg": rs.get("rpg"),
+                                    "apg": rs.get("apg"), "spg": rs.get("spg"),
+                                    "bpg": rs.get("bpg"), "fp": rs.get("fp"),
+                                    "gp": rs.get("gp")}})
+        return _cors(web.json_response({
+            "pack": STARTER_PACKS[pack_key]["name"], "cards": cards,
+            "coins": entry["coins"], "user": entry["name"]}))
+
+
+async def starter_status(request):
+    """Check if a user has claimed a starter (for onboarding gate)."""
+    session_tok = request.query.get("session")
+    sess = _read_session(session_tok) if session_tok else None
+    if not sess:
+        return _cors(web.json_response({"claimed": False, "error": "not logged in"}))
+    uid = str(sess["id"])
+    async with aiohttp.ClientSession() as session:
+        save_data, _ = await _gh_get(session, SAVE_PATH)
+        entry = (save_data.get("users", {}) or {}).get(uid, {}) if isinstance(save_data, dict) else {}
+        return _cors(web.json_response({
+            "claimed": bool(entry.get("starter_claimed")),
+            "pack": entry.get("starter_claimed"),
+            "packs": {k: {"name": v["name"], "desc": v["desc"]}
+                      for k, v in STARTER_PACKS.items()}}))
+
+
 async def open_pack(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
@@ -566,6 +714,9 @@ async def proxy_image(request):
 
 app = web.Application()
 app.router.add_post("/api/login", login)
+app.router.add_post("/api/starter", claim_starter)
+app.router.add_options("/api/starter", claim_starter)
+app.router.add_get("/api/starter_status", starter_status)
 app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_packs := open_pack)
 app.router.add_options("/api/openpack", open_pack)
