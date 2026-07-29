@@ -339,8 +339,21 @@ async def open_pack(request):
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
         _cat = await _card_catalog(session)
+        def _stats_for(n):
+            e = pool.get(n, {}) if isinstance(pool, dict) else {}
+            if not isinstance(e, dict):
+                return {}
+            return {
+                "archetype": e.get("arch", ""),
+                "gp": e.get("gp", 0),
+                "legend": e.get("legend", 0),
+                "perf": e.get("perf", 0),
+                "long": e.get("long", 0),
+                "hard": e.get("hard", 0),
+            }
         cards = [{"name": n, "tier": rarity.get(n, "Common"),
-                  "img": _card_img_from_catalog(n, _cat)} for n in pulled]
+                  "img": _card_img_from_catalog(n, _cat),
+                  "stats": _stats_for(n)} for n in pulled]
         resp = {"user": user.get("global_name") or user.get("username"),
                 "avatar": user.get("avatar"), "user_id": uid, "cards": cards}
         if new_session:
