@@ -40,6 +40,13 @@ def _slug(s):
     return _re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
 
 
+def _slug_loose(s):
+    """Like _slug but treats l/I/1 as the same char, so variant spellings
+    (IIHurz vs IIIHurz vs 1lHurz) all match the same card art."""
+    base = _re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
+    return _re.sub(r"[il1]", "i", base)
+
+
 async def _card_catalog(session):
     """Mirror the bot: read cards/meta.json + list cards/, map player->raw URL."""
     import time as _t
@@ -72,10 +79,12 @@ async def _card_catalog(session):
                         continue
                     stem = nm.rsplit(".", 1)[0]
                     raw = f"https://raw.githubusercontent.com/{GH_REPO}/{branch}/cards/{nm}"
-                    pslug = _slug(meta.get(stem, {}).get("player", "")) if isinstance(meta.get(stem), dict) else ""
+                    player_name = meta.get(stem, {}).get("player", "") if isinstance(meta.get(stem), dict) else ""
+                    pslug = _slug(player_name)
                     if pslug:
                         by_player.setdefault(pslug, raw)
-                    stems.append((_slug(stem), raw))
+                        by_player.setdefault(_slug_loose(player_name), raw)
+                    stems.append((_slug(stem), _slug_loose(stem), raw))
     except Exception as ex:
         print(f"[catalog] {ex}")
     _CARDCAT.update({"t": now, "by_player": by_player, "stems": stems})
@@ -83,17 +92,28 @@ async def _card_catalog(session):
 
 
 def _card_img_from_catalog(name, cat):
-    """Resolve a player name to its card art URL, mirroring the bot."""
+    """Resolve a player name to its card art URL. Tries exact match first,
+    then a LOOSE match that treats l/I/1 as the same char (variant spellings)."""
     want = _slug(name)
+    want_loose = _slug_loose(name)
     if not want:
         return None
-    for stem_slug, url in cat["stems"]:      # exact filename == player
+    # 1) exact filename == player
+    for stem_slug, stem_loose, url in cat["stems"]:
         if stem_slug == want:
             return url
-    if want in cat["by_player"]:             # meta.json says this file is this player
+    # 2) meta.json player match (exact or loose)
+    if want in cat["by_player"]:
         return cat["by_player"][want]
-    for stem_slug, url in cat["stems"]:      # award card containing the name
-        if want in stem_slug:
+    if want_loose in cat["by_player"]:
+        return cat["by_player"][want_loose]
+    # 3) loose filename match (IIHurz ~ IIIHurz)
+    for stem_slug, stem_loose, url in cat["stems"]:
+        if stem_loose == want_loose:
+            return url
+    # 4) award card containing the name (loose)
+    for stem_slug, stem_loose, url in cat["stems"]:
+        if want_loose in stem_loose:
             return url
     return None
 
