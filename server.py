@@ -414,11 +414,19 @@ async def get_binder(request):
                 
             _bcat = await _card_catalog(session)
             formatted_cards = []
+            def _bstats(nm):
+                e = pool.get(nm, {}) if isinstance(pool, dict) else {}
+                if not isinstance(e, dict):
+                    return {}
+                return {"archetype": e.get("arch",""), "gp": e.get("gp",0),
+                        "legend": e.get("legend",0), "perf": e.get("perf",0),
+                        "long": e.get("long",0), "hard": e.get("hard",0)}
             for name, count in card_counts.items():
                 tier_val = rarity_map.get(name, "Common")
                 tier = str(tier_val).lower() if tier_val else "common"
                 formatted_cards.append({"name": str(name), "tier": tier, "count": count,
-                                        "img": _card_img_from_catalog(name, _bcat)})
+                                        "img": _card_img_from_catalog(name, _bcat),
+                                        "stats": _bstats(name)})
 
             tier_order = {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
             formatted_cards.sort(key=lambda x: (tier_order.get(x["tier"], 5), x["name"]))
