@@ -198,6 +198,21 @@
   .binder-card.has-art .avatar-circle,
   .binder-card.has-art .arch,
   .binder-card.has-art .statline { display: none !important; }
+
+  .starter-sub { color:#8b949e; font-size:13px; text-align:center; max-width:400px;
+    margin:0 auto 18px; padding:0 16px; }
+  .starter-grid { display:flex; flex-wrap:wrap; gap:12px; justify-content:center;
+    max-width:640px; padding:0 16px; }
+  .starter-card { width:280px; background:linear-gradient(160deg,#1a2030,#12151f);
+    border:1px solid #2a3346; border-radius:14px; padding:16px; cursor:pointer;
+    transition:transform .15s, border-color .15s; }
+  .starter-card:hover { transform:translateY(-3px); border-color:#5865F2; }
+  .starter-card:active { transform:scale(.98); }
+  .sc-name { color:#fff; font-size:16px; font-weight:900; margin-bottom:6px; }
+  .sc-recipe { color:#5865F2; font-size:12px; font-weight:700; margin-bottom:8px; }
+  .sc-desc { color:#8b949e; font-size:12px; line-height:1.4; }
+  .starter-msg { color:#8b949e; font-size:13px; text-align:center; margin-top:16px; min-height:20px; }
+  .starter-card.picking { opacity:.5; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -214,6 +229,14 @@
     <button class="menu-btn" id="nav-packs">Open Packs</button>
     <button class="menu-btn" id="nav-binder">My Binder</button>
     <button class="menu-btn disabled" id="nav-play">Play (Coming Soon)</button>
+  </div>
+
+  <!-- ONBOARDING: STARTER PACK CHOICE -->
+  <div id="view-starter" class="view">
+    <div class="menu-title">Choose Your Starter</div>
+    <div class="starter-sub">Pick a strategy. You get 3 curated players + 500 coins. One time only.</div>
+    <div id="starter-choices" class="starter-grid"></div>
+    <div id="starter-msg" class="starter-msg"></div>
   </div>
 
   <!-- PACKS VIEW -->
@@ -245,6 +268,66 @@
   // ---- VIEW NAVIGATION LOGIC ----
   const views = document.querySelectorAll('.view');
   const btnBack = document.getElementById('btn-back');
+
+  async function checkStarter(){
+    try {
+      const r = await fetch(PULL_SERVER + "/api/starter_status?session=" + encodeURIComponent(sessionToken));
+      const d = await r.json();
+      if (d && !d.claimed && d.packs) {
+        renderStarterChoices(d.packs);
+        switchView('view-starter');
+      }
+    } catch(e){ /* if it fails, don't block the app */ }
+  }
+
+  const STARTER_RECIPES = {
+    glass_cleaner: "2 Rebounding Bigs + 1 Scoring Guard",
+    floor_general: "2 Playmaking Guards + 1 Finishing Big",
+    pure_scorer:   "2 Shot-Creating Wings + 1 Defensive Anchor",
+    lockdown:      "2 Defensive Specialists + 1 Two-Way Wing",
+  };
+
+  function renderStarterChoices(packs){
+    const grid = document.getElementById('starter-choices');
+    grid.innerHTML = '';
+    Object.keys(packs).forEach(key => {
+      const p = packs[key];
+      const el = document.createElement('div');
+      el.className = 'starter-card';
+      el.innerHTML = `<div class="sc-name">${p.name}</div>`+
+        `<div class="sc-recipe">${STARTER_RECIPES[key]||''}</div>`+
+        `<div class="sc-desc">${p.desc}</div>`;
+      el.addEventListener('click', ()=> claimStarter(key, el));
+      grid.appendChild(el);
+    });
+  }
+
+  async function claimStarter(packKey, el){
+    const msg = document.getElementById('starter-msg');
+    document.querySelectorAll('.starter-card').forEach(c=>c.classList.add('picking'));
+    msg.textContent = "Building your pack…";
+    try {
+      const r = await fetch(PULL_SERVER + "/api/starter", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ session: sessionToken, pack: packKey })
+      });
+      const d = await r.json();
+      if (d && d.cards) {
+        msg.textContent = `${d.pack} claimed! +500 coins.`;
+        // reveal the starter cards using the pack animation
+        switchView('view-packs');
+        show(d.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
+                              name:c.name, role:'', img:c.img, stats:c.stats})));
+        document.getElementById('pack').style.display='none';
+      } else {
+        msg.textContent = (d && d.error) ? d.error : "Something went wrong.";
+        document.querySelectorAll('.starter-card').forEach(c=>c.classList.remove('picking'));
+      }
+    } catch(e){
+      msg.textContent = "Couldn't reach the server.";
+      document.querySelectorAll('.starter-card').forEach(c=>c.classList.remove('picking'));
+    }
+  }
 
   function switchView(viewId) {
     views.forEach(v => v.classList.remove('show'));
@@ -504,6 +587,7 @@
       if (data && data.session) {
         sessionToken = data.session;
         who.textContent = data.user || "you";
+        await checkStarter();   // gate onboarding
       } else {
         who.textContent = "you";
       }
