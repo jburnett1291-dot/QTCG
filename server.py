@@ -30,6 +30,74 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
+
+import re as _re
+
+_CARDCAT = {"t": 0, "by_player": {}, "stems": []}
+
+
+def _slug(s):
+    return _re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
+
+
+async def _card_catalog(session):
+    """Mirror the bot: read cards/meta.json + list cards/, map player->raw URL."""
+    import time as _t
+    now = _t.time()
+    if _CARDCAT["by_player"] and (now - _CARDCAT["t"] < 300):
+        return _CARDCAT
+    branch = os.environ.get("GITHUB_BRANCH", "main")
+    hdr = {"User-Agent": "QCL-PullServer", "Accept": "application/vnd.github+json"}
+    if GH_TOKEN:
+        hdr["Authorization"] = f"Bearer {GH_TOKEN}"
+    by_player, stems = {}, []
+    try:
+        meta = {}
+        async with session.get(
+                f"https://api.github.com/repos/{GH_REPO}/contents/cards/meta.json",
+                params={"ref": branch}, headers=hdr) as r:
+            if r.status == 200:
+                j = await r.json()
+                try:
+                    meta = json.loads(_b64.b64decode(j["content"]).decode("utf-8"))
+                except Exception:
+                    meta = {}
+        async with session.get(
+                f"https://api.github.com/repos/{GH_REPO}/contents/cards",
+                params={"ref": branch}, headers=hdr) as r:
+            if r.status == 200:
+                for it in await r.json():
+                    nm = it.get("name", "")
+                    if not nm.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+                        continue
+                    stem = nm.rsplit(".", 1)[0]
+                    raw = f"https://raw.githubusercontent.com/{GH_REPO}/{branch}/cards/{nm}"
+                    pslug = _slug(meta.get(stem, {}).get("player", "")) if isinstance(meta.get(stem), dict) else ""
+                    if pslug:
+                        by_player.setdefault(pslug, raw)
+                    stems.append((_slug(stem), raw))
+    except Exception as ex:
+        print(f"[catalog] {ex}")
+    _CARDCAT.update({"t": now, "by_player": by_player, "stems": stems})
+    return _CARDCAT
+
+
+def _card_img_from_catalog(name, cat):
+    """Resolve a player name to its card art URL, mirroring the bot."""
+    want = _slug(name)
+    if not want:
+        return None
+    for stem_slug, url in cat["stems"]:      # exact filename == player
+        if stem_slug == want:
+            return url
+    if want in cat["by_player"]:             # meta.json says this file is this player
+        return cat["by_player"][want]
+    for stem_slug, url in cat["stems"]:      # award card containing the name
+        if want in stem_slug:
+            return url
+    return None
+
+
 SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # points to master save
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
@@ -250,7 +318,9 @@ async def open_pack(request):
         if not ok:
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
-        cards = [{"name": n, "tier": rarity.get(n, "Common")} for n in pulled]
+        _cat = await _card_catalog(session)
+        cards = [{"name": n, "tier": rarity.get(n, "Common"),
+                  "img": _card_img_from_catalog(n, _cat)} for n in pulled]
         resp = {"user": user.get("global_name") or user.get("username"),
                 "avatar": user.get("avatar"), "user_id": uid, "cards": cards}
         if new_session:
@@ -309,11 +379,13 @@ async def get_binder(request):
                         cname = card["name"]
                         card_counts[cname] = card_counts.get(cname, 0) + 1
                 
+            _bcat = await _card_catalog(session)
             formatted_cards = []
             for name, count in card_counts.items():
                 tier_val = rarity_map.get(name, "Common")
                 tier = str(tier_val).lower() if tier_val else "common"
-                formatted_cards.append({"name": str(name), "tier": tier, "count": count})
+                formatted_cards.append({"name": str(name), "tier": tier, "count": count,
+                                        "img": _card_img_from_catalog(name, _bcat)})
 
             tier_order = {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
             formatted_cards.sort(key=lambda x: (tier_order.get(x["tier"], 5), x["name"]))
