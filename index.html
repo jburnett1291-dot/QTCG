@@ -132,7 +132,7 @@
   .binder-card.no-art .art { display:none; }
 
   .face.front .art, .card .art { position:absolute; inset:0; width:100%; height:100%;
-    object-fit:cover; border-radius:14px; z-index:1; background:#12151f; }
+    object-fit:contain; border-radius:14px; z-index:1; background:#12151f; }
   .card .art.missing { display:none; }
   .card.has-art .tier, .card.has-art .name, .card.has-art .role, .face.front .tier, .face.front .name, .face.front .role { position:relative; z-index:2;
     text-shadow:0 1px 5px rgba(0,0,0,.9); }
@@ -204,10 +204,19 @@
     margin-top:3px; z-index:2; }
 
   .binder-card .face .art { position:absolute; inset:0; width:100%; height:100%;
-    object-fit:cover; border-radius:10px; z-index:1; background:#12151f; display:block; }
+    object-fit:contain; border-radius:10px; z-index:1; background:#12151f; display:block; }
   .binder-card .face .art.missing { display:none; }
   .binder-card.has-art .avatar-circle { display:none; }
   .binder-card.has-art .arch, .binder-card.has-art .statline { display:none; }
+
+  /* full-card art: show the whole design, hide our text overlay */
+  .binder-card.has-art .tier, .binder-card.has-art .name,
+  .binder-card.has-art .arch, .binder-card.has-art .statline,
+  .binder-card.has-art .avatar-circle { display:none !important; }
+  .card.has-art .tier, .card.has-art .name, .card.has-art .role { display:none !important; }
+  .binder-card .face .art, .card .face .art { background:transparent; }
+  /* keep the flip/info button visible above art */
+  .info-btn { z-index:6 !important; }
 </style>
 </head>
 <body>
