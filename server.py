@@ -540,6 +540,29 @@ async def diag(request):
                       else "SOMETHING FAILED — see which step ok=false above")
     return _cors(web.json_response(out, status=200))
 
+async def proxy_image(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    url = request.query.get("url")
+    if not url or not url.startswith("https://raw.githubusercontent.com/"):
+        return _cors(web.json_response({"error": "Bad URL"}, status=400))
+    
+    headers = {}
+    if GH_TOKEN:
+        headers["Authorization"] = f"token {GH_TOKEN}"
+        
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, headers=headers) as r:
+                if r.status != 200:
+                    return _cors(web.Response(status=r.status))
+                data = await r.read()
+                ctype = r.headers.get("Content-Type", "image/png")
+                resp = web.Response(body=data, content_type=ctype)
+                return _cors(resp)
+        except Exception as e:
+            return _cors(web.json_response({"error": str(e)}, status=500))
+
 
 app = web.Application()
 app.router.add_post("/api/login", login)
@@ -552,6 +575,9 @@ app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/", health)
+app.router.add_get("/api/img", proxy_image)
+app.router.add_options("/api/img", proxy_image)
+
 
 if __name__ == "__main__":
     print(f"[qcl-pull-server] starting on :{PORT}, repo={GH_REPO}")
