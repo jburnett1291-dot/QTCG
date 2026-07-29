@@ -33,6 +33,34 @@ GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
 
 import re as _re
 
+
+_PSTATS = {"t": 0, "data": {}}
+
+
+async def _load_player_stats(session):
+    import time as _t
+    now = _t.time()
+    if _PSTATS["data"] and (now - _PSTATS["t"] < 120):
+        return _PSTATS["data"]
+    try:
+        data, _ = await _gh_get(session, "player_stats.json")
+        if isinstance(data, dict):
+            _PSTATS.update({"t": now, "data": data})
+    except Exception as e:
+        print(f"[pstats] {e}")
+    return _PSTATS["data"]
+
+
+def _real_stats(name, pstats):
+    """Look up a player's real stats, tolerant of l/I/1 variants."""
+    if name in pstats:
+        return pstats[name]
+    want = _slug_loose(name)
+    for k, v in pstats.items():
+        if _slug_loose(k) == want:
+            return v
+    return {}
+
 _CARDCAT = {"t": 0, "by_player": {}, "stems": []}
 
 
@@ -339,17 +367,18 @@ async def open_pack(request):
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
         _cat = await _card_catalog(session)
+        _pstats = await _load_player_stats(session)
         def _stats_for(n):
+            rs = _real_stats(n, _pstats)
             e = pool.get(n, {}) if isinstance(pool, dict) else {}
             if not isinstance(e, dict):
                 return {}
             return {
                 "archetype": e.get("arch", ""),
-                "gp": e.get("gp", 0),
-                "legend": e.get("legend", 0),
-                "perf": e.get("perf", 0),
-                "long": e.get("long", 0),
-                "hard": e.get("hard", 0),
+                "gp": rs.get("gp", e.get("gp", 0)),
+                "ppg": rs.get("ppg"), "rpg": rs.get("rpg"), "apg": rs.get("apg"),
+                "spg": rs.get("spg"), "bpg": rs.get("bpg"), "fp": rs.get("fp"),
+                "legend": e.get("legend", 0), "perf": e.get("perf", 0),
             }
         cards = [{"name": n, "tier": rarity.get(n, "Common"),
                   "img": _card_img_from_catalog(n, _cat),
@@ -413,14 +442,18 @@ async def get_binder(request):
                         card_counts[cname] = card_counts.get(cname, 0) + 1
                 
             _bcat = await _card_catalog(session)
+            _bpstats = await _load_player_stats(session)
             formatted_cards = []
             def _bstats(nm):
                 e = pool.get(nm, {}) if isinstance(pool, dict) else {}
                 if not isinstance(e, dict):
-                    return {}
-                return {"archetype": e.get("arch",""), "gp": e.get("gp",0),
-                        "legend": e.get("legend",0), "perf": e.get("perf",0),
-                        "long": e.get("long",0), "hard": e.get("hard",0)}
+                    e = {}
+                rs = _real_stats(nm, _bpstats)
+                return {"archetype": e.get("arch",""),
+                        "gp": rs.get("gp", e.get("gp",0)),
+                        "ppg": rs.get("ppg"), "rpg": rs.get("rpg"), "apg": rs.get("apg"),
+                        "spg": rs.get("spg"), "bpg": rs.get("bpg"), "fp": rs.get("fp"),
+                        "legend": e.get("legend",0), "perf": e.get("perf",0)}
             for name, count in card_counts.items():
                 tier_val = rarity_map.get(name, "Common")
                 tier = str(tier_val).lower() if tier_val else "common"
