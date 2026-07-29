@@ -122,23 +122,12 @@
     display:none; box-shadow:0 8px 24px rgba(88,101,242,.5); }
   .again.show { display:block; }
 
-  /* real card art fills the mini card */
-  
-  .binder-card .art.missing { display:none; }
+  /* card art structural fixes */
   .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
     text-shadow:0 1px 4px rgba(0,0,0,.9); }
   .binder-card.has-art .name { background:rgba(0,0,0,.55); border-radius:0 0 10px 10px;
     width:100%; text-align:center; padding:2px 0; }
-  .binder-card.no-art .art { display:none; }
-
-  .face.front .art, .card .art { position:absolute; inset:0; width:100%; height:100%;
-    object-fit:contain; border-radius:14px; z-index:1; background:#12151f; }
-  .card .art.missing { display:none; }
-  .card.has-art .tier, .card.has-art .name, .card.has-art .role, .face.front .tier, .face.front .name, .face.front .role { position:relative; z-index:2;
-    text-shadow:0 1px 5px rgba(0,0,0,.9); }
-  .card.has-art .name { background:rgba(0,0,0,.5); border-radius:6px; padding:1px 6px; }
-  .card.no-art .art { display:none; }
-
+  
   /* ---- CARD FLIP (front art / back stats) ---- */
   .card { perspective: 900px; }
   .flip-inner { position:absolute; inset:0; transform-style:preserve-3d;
@@ -161,8 +150,6 @@
   .stat-empty { color:#8b949e; font-size:11px; text-align:center; margin-top:20px; }
   .flip-hint { position:absolute; bottom:6px; left:0; right:0; text-align:center;
     color:rgba(255,255,255,.4); font-size:8px; letter-spacing:.5px; }
-  /* front face keeps the art/holo; make sure they live in .front now */
-  .face.front { background:linear-gradient(135deg,#232a3d,#12151f); }
 
   /* ---- BINDER CARD FLIP ---- */
   .binder-card { perspective:800px; }
@@ -173,7 +160,6 @@
     backface-visibility:hidden; -webkit-backface-visibility:hidden;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     overflow:hidden; }
-  .binder-card .face.front { background:linear-gradient(135deg,#232a3d,#12151f); }
   .binder-card .face.back { transform:rotateY(180deg);
     background:linear-gradient(160deg,#12151f,#1c2233); padding:8px 6px;
     justify-content:flex-start; }
@@ -185,15 +171,12 @@
   .binder-card .sl { color:#8b949e; font-size:8px; font-weight:700; text-transform:uppercase; }
   .binder-card .sv { color:#e6edf3; font-size:9px; font-weight:800; }
   .binder-card .stat-empty { color:#8b949e; font-size:9px; text-align:center; margin-top:16px; }
-  .info-btn { position:absolute; top:4px; right:4px; z-index:5; width:18px; height:18px;
+  .info-btn { position:absolute; top:4px; right:4px; z-index:6; width:18px; height:18px;
     border-radius:50%; border:none; background:rgba(0,0,0,.55); color:#fff;
     font-size:11px; font-weight:900; cursor:pointer; line-height:1;
     display:flex; align-items:center; justify-content:center; }
   .info-btn:hover { background:#5865F2; }
   
-  .binder-card.has-art .tier, .binder-card.has-art .name { position:relative; z-index:2;
-    text-shadow:0 1px 4px rgba(0,0,0,.9); }
-
   .binder-card .avatar-circle { width:46px; height:46px; border-radius:50%;
     border:2px solid rgba(255,255,255,.35); display:flex; align-items:center;
     justify-content:center; font-size:16px; font-weight:900; color:#fff;
@@ -203,27 +186,18 @@
   .binder-card .statline { color:#e6edf3; font-size:8px; font-weight:800;
     margin-top:3px; z-index:2; }
 
-  .binder-card .face .art { position:absolute !important; inset:0 !important; width:100% !important;
-    height:100% !important; object-fit:contain !important; border-radius:10px; z-index:1;
-    background:#0d1117; display:block !important; max-width:none; max-height:none; }
-  .binder-card .face .art.missing { display:none; }
-  .binder-card.has-art .avatar-circle { display:none; }
-  .binder-card.has-art .arch, .binder-card.has-art .statline { display:none; }
+  /* Bulletproof Background Image Display for Front Faces */
+  .binder-card .face.front, .card .face.front { 
+    background-color: #232a3d;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
 
-  /* full-card art: show the whole design, hide our text overlay */
-  .binder-card.has-art .tier, .binder-card.has-art .name,
-  .binder-card.has-art .arch, .binder-card.has-art .statline,
-  .binder-card.has-art .avatar-circle { display:none !important; }
-  .card.has-art .tier, .card.has-art .name, .card.has-art .role { display:none !important; }
-  .binder-card .face .art, .card .face .art { background:transparent; }
-  /* keep the flip/info button visible above art */
-  .info-btn { z-index:6 !important; }
-
-  /* background-image card art (bulletproof fill) */
-  .binder-card .face.front { background-size:cover; background-position:center;
-    background-repeat:no-repeat; }
-  .card .face.front { background-size:cover; background-position:center;
-    background-repeat:no-repeat; }
+  /* When art loads successfully, hide fallback placeholder items */
+  .binder-card.has-art .avatar-circle,
+  .binder-card.has-art .arch,
+  .binder-card.has-art .statline { display: none !important; }
 </style>
 </head>
 <body>
@@ -336,24 +310,23 @@
         // Render Cards
         data.cards.forEach(c => {
             const el = document.createElement('div');
-            el.className = 'binder-card ' + c.tier + (c.img ? ' has-art' : '');
+            el.className = 'binder-card ' + c.tier;
             let inner = (c.count > 1 ? `<div class="badge">x${c.count}</div>` : '') +
                 (c.tier === 'legendary' ? '<div class="holo"></div>' : '');
-            // art applied as background-image after render
-            // rich designed front: avatar initials + name + archetype + stat line
+            
             const initials = (c.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase() || '?';
             const s0 = c.stats || {};
             const arch = s0.archetype ? `<div class="arch">${s0.archetype}</div>` : '';
             const hasReal = (s0.ppg!==undefined && s0.ppg!==null && s0.ppg!=='');
             const ppg = hasReal ?
                         `<div class="statline">${s0.ppg} PPG · ${s0.rpg||0} RPG · ${s0.apg||0} APG</div>` : '';
-            if(!c.img){
-              inner += `<div class="avatar-circle">${initials}</div>`;
-            }
-            inner += `<div class="tier">${c.tier.toUpperCase()}</div>` +
+            
+            inner += `<div class="avatar-circle">${initials}</div>` +
+                     `<div class="tier">${c.tier.toUpperCase()}</div>` +
                      `<div class="name">${c.name}</div>` +
                      arch + ppg +
                      `<button class="info-btn" title="Stats">i</button>`;
+            
             // BACK face (stats)
             const s = c.stats || {};
             const row = (l,v)=> (v===undefined||v===null||v===''||v===0)?'':
@@ -366,16 +339,20 @@
             const back = `<div class="back-title">${c.name}</div>` +
                          `<div class="stat-block">${statRows}</div>` +
                          `<button class="info-btn back-btn" title="Back">×</button>`;
+            
             el.innerHTML = `<div class="flip-inner"><div class="face front">${inner}</div>` +
                            `<div class="face back">${back}</div></div>`;
+            
             if (c.img) {
                 const f = el.querySelector('.face.front');
                 const probe = new Image();
-                probe.onload = () => { f.style.backgroundImage = `url("${c.img}")`;
-                    el.classList.add('has-art'); };
-                probe.onerror = () => { el.classList.remove('has-art'); el.classList.add('no-art'); };
+                probe.onload = () => { 
+                    f.style.backgroundImage = `url("${c.img}")`;
+                    el.classList.add('has-art'); 
+                };
                 probe.src = c.img;
             }
+
             el.querySelector('.info-btn').addEventListener('click', (ev)=>{
                 ev.stopPropagation(); el.classList.add('flipped'); });
             el.querySelector('.back-btn').addEventListener('click', (ev)=>{
@@ -458,10 +435,9 @@
     reveal.innerHTML=''; reveal.classList.add('show');
     cards.forEach((c,i)=>{
       const el=document.createElement('div');
-      el.className='card '+c.tier+(c.img?' has-art':'');
+      el.className='card '+c.tier;
       // front face
       let front=(c.tier==='legendary' ? '<div class="holo"></div>' : '');
-      // art applied as background below
       front+=`<div class="tier">${c.tier.toUpperCase()}</div>`+
         `<div class="name">${c.name}</div>`+
         `<div class="role">${c.role||''}</div>`+
@@ -472,8 +448,10 @@
       if(c.img){
         const f=el.querySelector('.face.front');
         const probe=new Image();
-        probe.onload=()=>{ f.style.backgroundImage=`url("${c.img}")`; el.classList.add('has-art'); };
-        probe.onerror=()=>{ el.classList.remove('has-art'); el.classList.add('no-art'); };
+        probe.onload=()=>{ 
+            f.style.backgroundImage=`url("${c.img}")`; 
+            el.classList.add('has-art'); 
+        };
         probe.src=c.img;
       }
       el.addEventListener('click', ()=>{ el.classList.toggle('flipped'); });
