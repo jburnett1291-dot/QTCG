@@ -305,6 +305,17 @@
   </div>
 
   <!-- BINDER VIEW -->
+  <!-- LINEUP: set 3 starters + 2 bench, lock 48h -->
+  <div id="view-lineup" class="view" style="justify-content:flex-start;">
+    <div class="menu-title">My Lineup</div>
+    <div id="lineup-status" class="lineup-status"></div>
+    <div id="lineup-slots" class="lineup-slots"></div>
+    <div class="lineup-pool-label">Your Players (tap to assign)</div>
+    <div id="lineup-pool" class="lineup-pool"></div>
+    <button id="lineup-lock-btn" class="lock-btn">Lock Lineup (48h)</button>
+    <div id="lineup-msg" class="lineup-msg"></div>
+  </div>
+
   <div id="view-binder" class="view" style="justify-content: flex-start;">
     <div class="binder-title">Your Collection</div>
     <div id="binder-msg" class="cta" style="margin-top:0;"></div>
@@ -399,32 +410,48 @@
 
   async function loadLineup(){
     const status=document.getElementById('lineup-status');
-    status.textContent='Loading…';
+    // ALWAYS render the 5 slots first so the screen is never blank
+    renderLineup();
+    status.textContent='Loading your players…';
+    if(!sessionToken){
+      status.textContent='Log in (open inside Discord) to build a lineup.';
+      return;
+    }
     try{
       const r=await fetch(PULL_SERVER+"/api/lineup?session="+encodeURIComponent(sessionToken));
       const d=await r.json();
-      if(d.error){ status.textContent=d.error; return; }
-      lineupOwned = d.owned||[];
-      lineupLocked = !!d.locked;
-      // seed draft from current roster
+      if(d && d.error){
+        status.textContent=d.error;
+        renderLineup();
+        return;
+      }
+      lineupOwned = (d && d.owned) || [];
+      lineupLocked = !!(d && d.locked);
       LINEUP_SLOTS.forEach(s=>{
-        const cell=d.roster && d.roster[s.key];
-        lineupDraft[s.key] = cell ? cell.name : null;
+        const cell=d && d.roster && d.roster[s.key];
+        lineupDraft[s.key] = cell ? cell.name : (lineupDraft[s.key]||null);
       });
       if(lineupLocked){
-        const hrs=(d.remaining_seconds/3600);
+        const hrs=((d.remaining_seconds||0)/3600);
         status.className='lineup-status locked';
         status.textContent=`🔒 Locked — ${hrs.toFixed(1)}h remaining`;
       } else {
         status.className='lineup-status';
-        status.textContent='Set 3 starters + 2 bench, then lock for 48h.';
+        status.textContent = lineupOwned.length
+          ? 'Set 3 starters + 2 bench, then lock for 48h.'
+          : 'You have no players yet — open some packs first!';
       }
       renderLineup();
-    }catch(e){ status.textContent='Could not load lineup.'; }
+    }catch(e){
+      status.textContent='Could not reach server. Slots shown below.';
+      renderLineup();
+    }
   }
 
   function renderLineup(){
     const slots=document.getElementById('lineup-slots');
+    const pool=document.getElementById('lineup-pool');
+    if(!slots || !pool) return;   // view not present yet
     slots.innerHTML='';
     LINEUP_SLOTS.forEach(s=>{
       const el=document.createElement('div');
@@ -442,7 +469,6 @@
       slots.appendChild(el);
     });
     // pool of owned players
-    const pool=document.getElementById('lineup-pool');
     pool.innerHTML='';
     const used=new Set(Object.values(lineupDraft).filter(Boolean));
     const uniqueOwned=[...new Set(lineupOwned)];
