@@ -504,6 +504,9 @@ async def open_pack(request):
         return _cors(web.json_response({"error": "bad request"}, status=400))
     code = body.get("code")
     session_tok = body.get("session")
+    stake = int(body.get("stake", PACK_COST) or PACK_COST)
+    if stake < PACK_COST:
+        stake = PACK_COST
 
     async with aiohttp.ClientSession() as session:
         sess = _read_session(session_tok) if session_tok else None
@@ -576,7 +579,7 @@ async def open_pack(request):
         pulled = _draw_weighted(names, rarity, odds)
         user_entry["cards"].extend(pulled)
 
-        coins_after = "∞" if owner else user_entry["coins"]
+        coins_after = "unlimited" if owner else user_entry["coins"]
         ok = await _gh_put(session, SAVE_PATH, save_data, sha,
                            f"pack (stake {stake}): {user_entry['name']} +{len(pulled)}")
         if not ok:
