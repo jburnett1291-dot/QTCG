@@ -213,6 +213,20 @@
   .sc-desc { color:#8b949e; font-size:12px; line-height:1.4; }
   .starter-msg { color:#8b949e; font-size:13px; text-align:center; margin-top:16px; min-height:20px; }
   .starter-card.picking { opacity:.5; pointer-events:none; }
+
+  .bank { margin-left:auto; background:rgba(241,196,15,.15); color:#f1c40f;
+    font-size:12px; font-weight:800; padding:3px 10px; border-radius:20px;
+    border:1px solid rgba(241,196,15,.3); }
+  .stake-bar { display:flex; flex-direction:column; align-items:center; gap:8px;
+    margin-bottom:18px; }
+  .stake-label { color:#e6edf3; font-size:14px; font-weight:800; }
+  .stake-btns { display:flex; gap:8px; }
+  .stake-btn { background:#1a2030; border:1px solid #2a3346; color:#8b949e;
+    font-size:13px; font-weight:800; padding:6px 14px; border-radius:8px;
+    cursor:pointer; transition:all .12s; }
+  .stake-btn:hover { border-color:#5865F2; }
+  .stake-btn.active { background:#5865F2; color:#fff; border-color:#5865F2; }
+  .stake-odds { color:#8b949e; font-size:11px; font-weight:600; }
 </style>
 </head>
 <body>
@@ -221,6 +235,7 @@
     <button class="back-btn" id="btn-back">◀ Back</button>
     <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
     <span>Opening as <span class="who" id="who">…</span></span>
+    <span class="bank" id="bank">💰 —</span>
   </div>
 
   <!-- HOME VIEW -->
@@ -241,6 +256,16 @@
 
   <!-- PACKS VIEW -->
   <div id="view-packs" class="view">
+    <div class="stake-bar" id="stake-bar">
+      <div class="stake-label">Stake: <span id="stake-val">10</span> coins</div>
+      <div class="stake-btns">
+        <button class="stake-btn active" data-stake="10">10</button>
+        <button class="stake-btn" data-stake="25">25</button>
+        <button class="stake-btn" data-stake="50">50</button>
+        <button class="stake-btn" data-stake="100">100</button>
+      </div>
+      <div class="stake-odds" id="stake-odds">Legendary 1.0% · Epic 4.0%</div>
+    </div>
     <div class="pack" id="pack">
       <div class="logo"><b>QCL PACK</b><span>TAP TO OPEN</span></div>
     </div>
@@ -464,6 +489,42 @@
   const pack=document.getElementById('pack'), reveal=document.getElementById('reveal'),
         cta=document.getElementById('cta'), again=document.getElementById('again');
   let busy=false;
+  let selectedStake = 10;
+  let ownerUnlimited = false;
+
+  // staked odds preview (mirrors server math)
+  function previewOdds(stake){
+    const base={Common:.50,Uncommon:.30,Rare:.15,Epic:.04,Legendary:.01};
+    const boost=Math.max(0,stake-10)/20;
+    const mult={Common:1,Uncommon:1+boost*.2,Rare:1+boost*.8,Epic:1+boost*1.5,Legendary:1+boost*3};
+    let w={},t=0; for(const k in base){w[k]=base[k]*mult[k]; t+=w[k];}
+    return {leg:(w.Legendary/t*100), epic:(w.Epic/t*100)};
+  }
+  function refreshStakeUI(){
+    document.querySelectorAll('.stake-btn').forEach(b=>{
+      b.classList.toggle('active', +b.dataset.stake===selectedStake); });
+    document.getElementById('stake-val').textContent = selectedStake;
+    const o=previewOdds(selectedStake);
+    document.getElementById('stake-odds').textContent =
+      `Legendary ${o.leg.toFixed(1)}% · Epic ${o.epic.toFixed(1)}%`;
+  }
+  document.querySelectorAll('.stake-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{ selectedStake=+b.dataset.stake; refreshStakeUI(); });
+  });
+  refreshStakeUI();
+
+  async function updateBank(){
+    if(!sessionToken) return;
+    try {
+      const r=await fetch(PULL_SERVER+"/api/balance?session="+encodeURIComponent(sessionToken));
+      const d=await r.json();
+      if(d){
+        ownerUnlimited = !!d.owner;
+        const bank=document.getElementById('bank');
+        bank.textContent = ownerUnlimited ? "💰 ∞" : `💰 ${d.coins}`;
+      }
+    } catch(e){}
+  }
 
   async function open(){
     if(busy) return; busy=true; cta.textContent='';
@@ -471,7 +532,7 @@
     
     const pullPromise = fetch(PULL_SERVER + "/api/openpack", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(sessionToken ? { session: sessionToken }
+      body: JSON.stringify(sessionToken ? { session: sessionToken, stake: selectedStake }
                                         : { code: authCode })
     }).then(r=>r.json()).catch(()=>null);
     
@@ -483,14 +544,19 @@
       if(result && result.cards){
         if(result.session){ sessionToken = result.session; }
         if(result.user){ document.getElementById('who').textContent = result.user; }
+        // update bank from the response
+        if(result.coins!==undefined){
+          const bank=document.getElementById('bank');
+          bank.textContent = (result.coins==='∞') ? "💰 ∞" : `💰 ${result.coins}`;
+        }
         show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
-                                   name:c.name, role:'', img:c.img})));
+                                   name:c.name, role:'', img:c.img, stats:c.stats})));
       } else if(!authCode){
         cta.textContent = "Preview mode (open inside Discord to save real pulls)";
         show(previewPack());
       } else {
         cta.textContent = (result && result.error)
-          ? ("Server: " + result.error)
+          ? (result.error)
           : "Couldn't reach the server — check it's awake.";
         busy=false; pack.style.display='flex'; pack.classList.remove('burst');
       }
@@ -588,6 +654,7 @@
         sessionToken = data.session;
         who.textContent = data.user || "you";
         await checkStarter();   // gate onboarding
+        await updateBank();     // show coin balance
       } else {
         who.textContent = "you";
       }
