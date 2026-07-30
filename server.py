@@ -147,6 +147,8 @@ def _card_img_from_catalog(name, cat):
 
 
 SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # points to master save
+OWNER_ID = os.environ.get("OWNER_ID", "")  # Discord id with unlimited coins / free packs
+PACK_COST = int(os.environ.get("PACK_COST", "10"))  # base pack cost in coins
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -438,6 +440,61 @@ async def starter_status(request):
                       for k, v in STARTER_PACKS.items()}}))
 
 
+
+def _is_owner(uid):
+    return OWNER_ID and str(uid) == str(OWNER_ID)
+
+
+def _staked_odds(stake):
+    """Return tier odds shifted by how many coins were staked.
+    Base (PACK_COST) = normal. More stake = more weight to rare tiers,
+    re-normalized to a valid distribution."""
+    # normal weights (must mirror the base _draw odds)
+    base = {"Common": 0.50, "Uncommon": 0.30, "Rare": 0.15, "Epic": 0.04, "Legendary": 0.01}
+    extra = max(0, stake - PACK_COST)
+    # boost factor scales with extra coins: +10 coins ~ +0.5x rare weight
+    boost = extra / 20.0   # 20 extra coins = +1.0 boost unit
+    if boost <= 0:
+        return base
+    mult = {"Common": 1.0, "Uncommon": 1.0 + boost * 0.2,
+            "Rare": 1.0 + boost * 0.8, "Epic": 1.0 + boost * 1.5,
+            "Legendary": 1.0 + boost * 3.0}
+    weighted = {k: base[k] * mult[k] for k in base}
+    total = sum(weighted.values())
+    return {k: v / total for k, v in weighted.items()}
+
+
+def _draw_weighted(names, rarity, odds, pack_size=3):
+    import random as _r
+    buckets = {}
+    for n in names:
+        buckets.setdefault(rarity.get(n, "Common"), []).append(n)
+    tiers = list(odds.keys()); weights = list(odds.values())
+    out = []
+    for _ in range(pack_size):
+        tier = _r.choices(tiers, weights=weights, k=1)[0]
+        bucket = buckets.get(tier) or names
+        if bucket:
+            out.append(_r.choice(bucket))
+    return out
+
+
+
+async def get_balance(request):
+    session_tok = request.query.get("session")
+    sess = _read_session(session_tok) if session_tok else None
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    uid = str(sess["id"])
+    async with aiohttp.ClientSession() as session:
+        save_data, _ = await _gh_get(session, SAVE_PATH)
+        entry = (save_data.get("users", {}) or {}).get(uid, {}) if isinstance(save_data, dict) else {}
+        owner = _is_owner(uid)
+        return _cors(web.json_response({
+            "coins": "unlimited" if owner else int(entry.get("coins", 0)),
+            "owner": owner, "pack_cost": PACK_COST}))
+
+
 async def open_pack(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
@@ -487,13 +544,11 @@ async def open_pack(request):
         if not names:
             return _cors(web.json_response({"error": "pool not published yet"}, status=503))
 
-        pulled = _draw(names, rarity)
-
         # Read master save (fantasy_save.json)
         save_data, sha = await _gh_get(session, SAVE_PATH)
         if not isinstance(save_data, dict):
             save_data = {}
-        
+
         users_dict = save_data.setdefault("users", {})
         user_entry = users_dict.setdefault(uid, {
             "name": user.get("global_name") or user.get("username"),
@@ -504,13 +559,26 @@ async def open_pack(request):
             "cumulative_fp": 0.0,
             "history": []
         })
-
-        # Update user record directly in the shared save schema
         user_entry["name"] = user.get("global_name") or user.get("username")
+
+        owner = _is_owner(uid)
+        bal = int(user_entry.get("coins", 0))
+        # charge the stake (owner opens free + unlimited)
+        if not owner:
+            if bal < stake:
+                return _cors(web.json_response(
+                    {"error": f"Not enough coins. Need {stake}, have {bal}.",
+                     "coins": bal, "need": stake}, status=402))
+            user_entry["coins"] = bal - stake
+
+        # staked odds: base cost = normal, extra coins boost rare chances
+        odds = _staked_odds(stake)
+        pulled = _draw_weighted(names, rarity, odds)
         user_entry["cards"].extend(pulled)
 
+        coins_after = "∞" if owner else user_entry["coins"]
         ok = await _gh_put(session, SAVE_PATH, save_data, sha,
-                           f"activity pack pull: {user_entry['name']} +{len(pulled)}")
+                           f"pack (stake {stake}): {user_entry['name']} +{len(pulled)}")
         if not ok:
             return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
 
@@ -532,7 +600,8 @@ async def open_pack(request):
                   "img": _card_img_from_catalog(n, _cat),
                   "stats": _stats_for(n)} for n in pulled]
         resp = {"user": user.get("global_name") or user.get("username"),
-                "avatar": user.get("avatar"), "user_id": uid, "cards": cards}
+                "avatar": user.get("avatar"), "user_id": uid, "cards": cards,
+                "coins": coins_after, "staked": stake}
         if new_session:
             resp["session"] = new_session
         return _cors(web.json_response(resp))
@@ -717,6 +786,7 @@ app.router.add_post("/api/login", login)
 app.router.add_post("/api/starter", claim_starter)
 app.router.add_options("/api/starter", claim_starter)
 app.router.add_get("/api/starter_status", starter_status)
+app.router.add_get("/api/balance", get_balance)
 app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_packs := open_pack)
 app.router.add_options("/api/openpack", open_pack)
