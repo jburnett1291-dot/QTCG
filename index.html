@@ -257,6 +257,20 @@
     padding:12px 28px; border-radius:12px; cursor:pointer; }
   .lock-btn:disabled { background:#2a3346; color:#8b949e; cursor:not-allowed; }
   .lineup-msg { color:#8b949e; font-size:13px; text-align:center; margin-top:12px; min-height:20px; }
+
+  /* themed per-view backgrounds (from repo/backgrounds/) */
+  .view.has-bg::before {
+    content:""; position:absolute; inset:0; z-index:0;
+    background-image: var(--bg-url); background-size:cover; background-position:center;
+    background-repeat:no-repeat; opacity:.28; pointer-events:none;
+  }
+  .view.has-bg::after {
+    content:""; position:absolute; inset:0; z-index:0;
+    background:linear-gradient(180deg, rgba(13,17,23,.55), rgba(13,17,23,.8));
+    pointer-events:none;
+  }
+  .view { position:relative; }
+  .view > * { position:relative; z-index:1; }
 </style>
 </head>
 <body>
@@ -330,6 +344,31 @@
     : "https://diligent-eagerness-test.up.railway.app";
   let authCode = null;
   let sessionToken = null;
+
+  // ---- THEMED PAGE BACKGROUNDS (swap files in repo/backgrounds/) ----
+  const BG_BASE = "https://raw.githubusercontent.com/jburnett1291-dot/SPAM_HUB/main/backgrounds/";
+  const VIEW_BG = {
+    "view-home":    "home.png",
+    "view-binder":  "binder.png",
+    "view-lineup":  "lineup.png",
+    "view-packs":   "packs.png",
+    "view-starter": "starter.png",
+  };
+  const _bgApplied = {};
+  function applyBackground(viewId){
+    const file = VIEW_BG[viewId];
+    const view = document.getElementById(viewId);
+    if(!file || !view) return;
+    if(_bgApplied[viewId]) return;           // only try once per view
+    _bgApplied[viewId] = true;
+    const url = BG_BASE + file;
+    const probe = new Image();
+    probe.onload = () => { view.classList.add('has-bg');
+      view.style.setProperty('--bg-url', `url("${url}")`); };
+    probe.onerror = () => { /* no bg file yet — keep default look */ };
+    probe.src = url;
+  }
+
 
   // ---- VIEW NAVIGATION LOGIC ----
   const views = document.querySelectorAll('.view');
@@ -512,6 +551,7 @@
   function switchView(viewId) {
     views.forEach(v => v.classList.remove('show'));
     document.getElementById(viewId).classList.add('show');
+    applyBackground(viewId);
     
     if (viewId === 'view-home') {
       btnBack.style.display = 'none';
@@ -541,6 +581,7 @@
   if(lockBtn) lockBtn.addEventListener('click', lockLineup);
 
   btnBack.addEventListener('click', () => switchView('view-home'));
+  applyBackground('view-home');   // home is visible on load
 
   // ---- BINDER LOGIC ----
   const binderGrid = document.getElementById('binder-grid');
