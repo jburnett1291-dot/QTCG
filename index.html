@@ -227,6 +227,36 @@
   .stake-btn:hover { border-color:#5865F2; }
   .stake-btn.active { background:#5865F2; color:#fff; border-color:#5865F2; }
   .stake-odds { color:#8b949e; font-size:11px; font-weight:600; }
+
+  .lineup-status { color:#8b949e; font-size:13px; text-align:center; margin-bottom:14px; }
+  .lineup-status.locked { color:#f1c40f; font-weight:800; }
+  .lineup-slots { display:flex; flex-wrap:wrap; gap:10px; justify-content:center;
+    margin-bottom:18px; max-width:560px; }
+  .slot { width:88px; height:118px; border-radius:12px; border:2px dashed #2a3346;
+    background:#12151f; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; cursor:pointer; position:relative; overflow:hidden; }
+  .slot.filled { border-style:solid; border-color:#5865F2; }
+  .slot.starter { border-color:#5865F2; }
+  .slot.bench { }
+  .slot-label { position:absolute; top:4px; left:0; right:0; text-align:center;
+    font-size:9px; font-weight:800; color:#8b949e; text-transform:uppercase; z-index:2; }
+  .slot .slot-name { color:#fff; font-size:10px; font-weight:800; text-align:center;
+    padding:0 4px; z-index:2; text-shadow:0 1px 3px #000; }
+  .slot .slot-bg { position:absolute; inset:0; background-size:cover; background-position:center;
+    opacity:.85; }
+  .slot.empty .slot-name { color:#3a4356; }
+  .lineup-pool-label { color:#8b949e; font-size:12px; font-weight:700; margin-bottom:8px;
+    text-transform:uppercase; }
+  .lineup-pool { display:flex; flex-wrap:wrap; gap:6px; justify-content:center;
+    max-width:600px; max-height:180px; overflow-y:auto; margin-bottom:16px; padding:0 10px; }
+  .pool-chip { background:#1a2030; border:1px solid #2a3346; color:#e6edf3;
+    font-size:11px; font-weight:700; padding:5px 10px; border-radius:8px; cursor:pointer; }
+  .pool-chip:hover { border-color:#5865F2; }
+  .pool-chip.used { opacity:.35; pointer-events:none; }
+  .lock-btn { background:#5865F2; color:#fff; border:none; font-size:15px; font-weight:900;
+    padding:12px 28px; border-radius:12px; cursor:pointer; }
+  .lock-btn:disabled { background:#2a3346; color:#8b949e; cursor:not-allowed; }
+  .lineup-msg { color:#8b949e; font-size:13px; text-align:center; margin-top:12px; min-height:20px; }
 </style>
 </head>
 <body>
@@ -243,7 +273,7 @@
     <div class="menu-title">QTCG</div>
     <button class="menu-btn" id="nav-packs">Open Packs</button>
     <button class="menu-btn" id="nav-binder">My Binder</button>
-    <button class="menu-btn disabled" id="nav-play">Play (Coming Soon)</button>
+    <button class="menu-btn" id="nav-play">My Lineup</button>
   </div>
 
   <!-- ONBOARDING: STARTER PACK CHOICE -->
@@ -354,6 +384,105 @@
     }
   }
 
+  // ---- LINEUP BUILDER ----
+  const LINEUP_SLOTS = [
+    {key:'G', label:'Starter 1', type:'starter'},
+    {key:'F', label:'Starter 2', type:'starter'},
+    {key:'C', label:'Starter 3', type:'starter'},
+    {key:'B1', label:'Bench 1', type:'bench'},
+    {key:'B2', label:'Bench 2', type:'bench'},
+  ];
+  let lineupDraft = {G:null,F:null,C:null,B1:null,B2:null};
+  let lineupOwned = [];
+  let lineupLocked = false;
+  let lineupActiveSlot = 'G';
+
+  async function loadLineup(){
+    const status=document.getElementById('lineup-status');
+    status.textContent='Loading…';
+    try{
+      const r=await fetch(PULL_SERVER+"/api/lineup?session="+encodeURIComponent(sessionToken));
+      const d=await r.json();
+      if(d.error){ status.textContent=d.error; return; }
+      lineupOwned = d.owned||[];
+      lineupLocked = !!d.locked;
+      // seed draft from current roster
+      LINEUP_SLOTS.forEach(s=>{
+        const cell=d.roster && d.roster[s.key];
+        lineupDraft[s.key] = cell ? cell.name : null;
+      });
+      if(lineupLocked){
+        const hrs=(d.remaining_seconds/3600);
+        status.className='lineup-status locked';
+        status.textContent=`🔒 Locked — ${hrs.toFixed(1)}h remaining`;
+      } else {
+        status.className='lineup-status';
+        status.textContent='Set 3 starters + 2 bench, then lock for 48h.';
+      }
+      renderLineup();
+    }catch(e){ status.textContent='Could not load lineup.'; }
+  }
+
+  function renderLineup(){
+    const slots=document.getElementById('lineup-slots');
+    slots.innerHTML='';
+    LINEUP_SLOTS.forEach(s=>{
+      const el=document.createElement('div');
+      const name=lineupDraft[s.key];
+      el.className='slot '+s.type+(name?' filled':' empty')+(lineupActiveSlot===s.key?' active':'');
+      el.innerHTML=`<div class="slot-label">${s.label}</div>`+
+        (name?`<div class="slot-name">${name}</div>`:`<div class="slot-name">＋</div>`);
+      if(!lineupLocked){
+        el.addEventListener('click', ()=>{
+          if(name){ lineupDraft[s.key]=null; }  // tap filled slot to clear
+          else { lineupActiveSlot=s.key; }
+          renderLineup();
+        });
+      }
+      slots.appendChild(el);
+    });
+    // pool of owned players
+    const pool=document.getElementById('lineup-pool');
+    pool.innerHTML='';
+    const used=new Set(Object.values(lineupDraft).filter(Boolean));
+    const uniqueOwned=[...new Set(lineupOwned)];
+    uniqueOwned.forEach(nm=>{
+      const chip=document.createElement('div');
+      chip.className='pool-chip'+(used.has(nm)?' used':'');
+      chip.textContent=nm;
+      if(!lineupLocked){
+        chip.addEventListener('click', ()=>{
+          // assign to the active slot
+          lineupDraft[lineupActiveSlot]=nm;
+          // advance active slot to next empty
+          const next=LINEUP_SLOTS.find(s=>!lineupDraft[s.key]);
+          if(next) lineupActiveSlot=next.key;
+          renderLineup();
+        });
+      }
+      pool.appendChild(chip);
+    });
+    // lock button state
+    const btn=document.getElementById('lineup-lock-btn');
+    const full=LINEUP_SLOTS.every(s=>lineupDraft[s.key]);
+    btn.disabled = lineupLocked || !full;
+    btn.textContent = lineupLocked ? 'Locked' : (full?'Lock Lineup (48h)':'Fill all 5 slots');
+  }
+
+  async function lockLineup(){
+    const msg=document.getElementById('lineup-msg');
+    msg.textContent='Locking…';
+    try{
+      const r=await fetch(PULL_SERVER+"/api/lineup",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({session:sessionToken, roster:lineupDraft})
+      });
+      const d=await r.json();
+      if(d.ok){ msg.textContent='🔒 Lineup locked for 48 hours!'; loadLineup(); }
+      else { msg.textContent = d.error || 'Could not lock.'; }
+    }catch(e){ msg.textContent='Could not reach server.'; }
+  }
+
   function switchView(viewId) {
     views.forEach(v => v.classList.remove('show'));
     document.getElementById(viewId).classList.add('show');
@@ -379,7 +508,12 @@
     switchView('view-binder');
     fetchBinder();
   });
-  
+
+  const navPlay = document.getElementById('nav-play');
+  if(navPlay) navPlay.addEventListener('click', () => { switchView('view-lineup'); loadLineup(); });
+  const lockBtn = document.getElementById('lineup-lock-btn');
+  if(lockBtn) lockBtn.addEventListener('click', lockLineup);
+
   btnBack.addEventListener('click', () => switchView('view-home'));
 
   // ---- BINDER LOGIC ----
@@ -547,7 +681,7 @@
         // update bank from the response
         if(result.coins!==undefined){
           const bank=document.getElementById('bank');
-          bank.textContent = (result.coins==='∞') ? "💰 ∞" : `💰 ${result.coins}`;
+          bank.textContent = (result.coins==='unlimited'||result.coins==='∞') ? "💰 ∞" : `💰 ${result.coins}`;
         }
         show(result.cards.map(c=>({tier:(c.tier||'Common').toLowerCase(),
                                    name:c.name, role:'', img:c.img, stats:c.stats})));
