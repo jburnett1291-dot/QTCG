@@ -495,6 +495,130 @@ async def get_balance(request):
             "owner": owner, "pack_cost": PACK_COST}))
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ROSTER LOCK — set 5 (3 starters + 2 bench), locked 48h, only those 5 count
+# ═══════════════════════════════════════════════════════════════════════════
+
+LOCK_HOURS = 48
+ROSTER_SLOTS = ["G", "F", "C", "B1", "B2"]   # 3 starters + 2 bench
+
+
+async def _sheet_max_game(session):
+    """Current max game number, so scoring later counts games AFTER the lock.
+    Reads player_stats.json's 'gp' as a proxy if a game index isn't available."""
+    # placeholder: we stamp the lock with the highest 'gp' seen (game count).
+    # when real per-game scoring lands, replace with the sheet's max game #.
+    pstats = await _load_player_stats(session)
+    try:
+        return max((int(v.get("gp", 0)) for v in pstats.values() if isinstance(v, dict)), default=0)
+    except Exception:
+        return 0
+
+
+async def get_lineup(request):
+    session_tok = request.query.get("session")
+    sess = _read_session(session_tok) if session_tok else None
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    uid = str(sess["id"])
+    async with aiohttp.ClientSession() as session:
+        save_data, _ = await _gh_get(session, SAVE_PATH)
+        entry = (save_data.get("users", {}) or {}).get(uid, {}) if isinstance(save_data, dict) else {}
+        roster = entry.get("roster", {s: None for s in ROSTER_SLOTS})
+        locked_at = entry.get("roster_locked_at", 0)
+        now = time.time()
+        remaining = max(0, (locked_at + LOCK_HOURS * 3600) - now) if locked_at else 0
+        # decorate roster with card art + stats
+        _cat = await _card_catalog(session)
+        pstats = await _load_player_stats(session)
+        decorated = {}
+        for slot in ROSTER_SLOTS:
+            nm = roster.get(slot)
+            if nm:
+                rs = _real_stats(nm, pstats)
+                decorated[slot] = {"name": nm, "img": _card_img_from_catalog(nm, _cat),
+                                   "stats": rs}
+            else:
+                decorated[slot] = None
+        return _cors(web.json_response({
+            "roster": decorated,
+            "locked": remaining > 0,
+            "remaining_seconds": int(remaining),
+            "owned": entry.get("cards", []),
+            "slots": ROSTER_SLOTS}))
+
+
+async def set_lineup(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    session_tok = body.get("session")
+    new_roster = body.get("roster", {})
+    sess = _read_session(session_tok) if session_tok else None
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    uid = str(sess["id"])
+
+    async with aiohttp.ClientSession() as session:
+        save_data, sha = await _gh_get(session, SAVE_PATH)
+        if not isinstance(save_data, dict):
+            save_data = {}
+        users_dict = save_data.setdefault("users", {})
+        entry = users_dict.setdefault(uid, {
+            "name": sess.get("name"), "coins": 0, "cards": [],
+            "roster": {s: None for s in ROSTER_SLOTS}, "serials": {},
+            "cumulative_fp": 0.0, "history": []})
+
+        # LOCK ENFORCEMENT: can't change until 48h since last lock
+        now = time.time()
+        locked_at = entry.get("roster_locked_at", 0)
+        remaining = (locked_at + LOCK_HOURS * 3600) - now if locked_at else 0
+        if remaining > 0:
+            hrs = remaining / 3600
+            return _cors(web.json_response(
+                {"error": f"Lineup locked for {hrs:.1f} more hours.",
+                 "remaining_seconds": int(remaining), "locked": True}, status=423))
+
+        # validate: only slots we know, only cards the user OWNS, no duplicates
+        owned = set(entry.get("cards", []))
+        chosen = {}
+        seen = set()
+        for slot in ROSTER_SLOTS:
+            nm = new_roster.get(slot)
+            if nm is None or nm == "":
+                chosen[slot] = None
+                continue
+            if nm not in owned:
+                return _cors(web.json_response(
+                    {"error": f"You don't own '{nm}'."}, status=400))
+            if nm in seen:
+                return _cors(web.json_response(
+                    {"error": f"'{nm}' is in two slots."}, status=400))
+            seen.add(nm); chosen[slot] = nm
+
+        # require all 5 filled to lock (a full lineup)
+        if any(chosen[s] is None for s in ROSTER_SLOTS):
+            return _cors(web.json_response(
+                {"error": "Fill all 5 slots (3 starters + 2 bench) to lock."}, status=400))
+
+        entry["roster"] = chosen
+        entry["roster_locked_at"] = now
+        entry["roster_lock_game"] = await _sheet_max_game(session)  # for scoring later
+        entry["name"] = sess.get("name")
+
+        ok = await _gh_put(session, SAVE_PATH, save_data, sha,
+                           f"lineup lock: {entry['name']}")
+        if not ok:
+            return _cors(web.json_response({"error": "save failed (retry)"}, status=500))
+        return _cors(web.json_response({
+            "ok": True, "roster": chosen,
+            "locked": True, "remaining_seconds": LOCK_HOURS * 3600}))
+
+
 async def open_pack(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
@@ -790,6 +914,9 @@ app.router.add_post("/api/starter", claim_starter)
 app.router.add_options("/api/starter", claim_starter)
 app.router.add_get("/api/starter_status", starter_status)
 app.router.add_get("/api/balance", get_balance)
+app.router.add_get("/api/lineup", get_lineup)
+app.router.add_post("/api/lineup", set_lineup)
+app.router.add_options("/api/lineup", set_lineup)
 app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_packs := open_pack)
 app.router.add_options("/api/openpack", open_pack)
