@@ -514,6 +514,106 @@ async def draft_action(request):
     return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
 
 
+_TEST_FIRST = ["Adrian", "Bryce", "Caleb", "Darius", "Eli", "Felix", "Gavin", "Hudson", "Isaiah", "Jalen", "Kai", "Landon", "Micah", "Nolan", "Orion", "Preston", "Quincy", "Roman", "Silas", "Tristan"]
+_TEST_LAST = ["Anderson", "Bennett", "Cross", "Daniels", "Ellis", "Foster", "Grant", "Hayes", "Irving", "Jefferson", "King", "Lawson", "Mitchell", "Nash", "Owens", "Price", "Reed", "Sutton", "Turner", "Vaughn"]
+_TEST_POSITIONS = ["QB", "RB", "WR", "TE", "OT", "G", "C", "EDGE", "DT", "LB", "CB", "S"]
+_TEST_SCHOOLS = ["Great Lakes", "Coastal Tech", "Metro State", "Northern Plains", "Pacific Union", "Capital College", "Red River", "Atlantic A&M", "Mountain State", "Central City", "Lone Star Tech", "Carolina Union"]
+_TEST_TEAMS = ["Atlanta Aviators", "Austin Armadillos", "Baltimore Voyagers", "Boston Harbor", "Charlotte Crowns", "Chicago Blizzard", "Cleveland Forge", "Dallas Outlaws", "Denver Summit", "Detroit Motors", "Houston Comets", "Kansas City Monarchs", "Las Vegas Neon", "Los Angeles Stars", "Memphis Rhythm", "Miami Vice", "Nashville Sound", "New Orleans Brass", "New York Empire", "Orlando Orbit", "Philadelphia Liberty", "Phoenix Firebirds", "Portland Pines", "Seattle Emeralds", "Washington Sentinels"]
+
+
+def _draft_test_state():
+    draft = _draft_default()
+    draft["status"] = "active"
+    draft["director_mode"] = True
+    draft["teams"] = list(_TEST_TEAMS)
+    draft["coaches"] = {
+        team: f"{_TEST_FIRST[(i * 3 + 2) % len(_TEST_FIRST)]} {_TEST_LAST[(i * 5 + 4) % len(_TEST_LAST)]}"
+        for i, team in enumerate(_TEST_TEAMS)
+    }
+    draft["players"] = {}
+    for index in range(300):
+        rank = index + 1
+        player_id = f"test-prospect-{rank}"
+        draft["players"][player_id] = {
+            "discord_id": player_id,
+            "gamertag": f"{_TEST_FIRST[(index * 7 + 1) % len(_TEST_FIRST)]} {_TEST_LAST[(index * 11 + 3) % len(_TEST_LAST)]}",
+            "position": _TEST_POSITIONS[index % len(_TEST_POSITIONS)],
+            "school": _TEST_SCHOOLS[(index * 5) % len(_TEST_SCHOOLS)],
+            "rank": rank,
+            "overall": round(max(65, 99.4 - index * .105), 1),
+            "eligible": True,
+            "drafted_by": None,
+        }
+    draft["order"] = [
+        {"pick": index + 1, "round": index // 25 + 1,
+         "round_pick": index % 25 + 1, "team": _TEST_TEAMS[index % 25]}
+        for index in range(300)
+    ]
+    draft["deadline_at"] = time.time() + int(draft["pick_seconds"])
+    draft["revision"] = 1
+    _draft_audit(draft, "test_league_loaded", None, players=300, teams=25)
+    return draft
+
+
+async def draft_test_setup(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    sess = _draft_session(request, body)
+    if not sess or not _draft_is_admin(sess["id"]):
+        return _cors(web.json_response(
+            {"error": "owner or draft admin access required"},
+            status=403 if sess else 401,
+        ))
+    draft = _draft_test_state()
+    async with aiohttp.ClientSession() as session:
+        current, sha = await _gh_get(session, DRAFT_PATH)
+        ok = await _gh_put(session, DRAFT_PATH, draft, sha, "load 300-player QSPN test draft")
+    if not ok:
+        return _cors(web.json_response({"error": "test draft changed; retry"}, status=409))
+    _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
+    return _cors(web.json_response({"ok": True, "state": _draft_public(draft, sess["id"])}))
+
+
+async def draft_test_step(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    sess = _draft_session(request, body)
+    if not sess or not _draft_is_admin(sess["id"]):
+        return _cors(web.json_response(
+            {"error": "owner or draft admin access required"},
+            status=403 if sess else 401,
+        ))
+    async with aiohttp.ClientSession() as session:
+        raw, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(raw)
+        turn = _draft_turn(draft)
+        player = max(_draft_available(draft), key=lambda item: -int(item.get("rank", 9999)), default=None)
+        if not turn or not player:
+            return _cors(web.json_response(
+                {"ok": True, "complete": True, "state": _draft_public(draft, sess["id"])}
+            ))
+        pick = _draft_record_pick(draft, player, sess["id"], "test_simulation")
+        draft["revision"] = int(draft.get("revision", 0)) + 1
+        ok = await _gh_put(session, DRAFT_PATH, draft, sha, f"test simulation pick #{pick['pick']}")
+    if not ok:
+        return _cors(web.json_response({"error": "test draft changed; retry"}, status=409))
+    _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
+    team = {"id": pick["team"], "name": pick["team"], "city": "", "abbreviation": pick["team"][:3].upper()}
+    return _cors(web.json_response({
+        "ok": True, "complete": not _draft_turn(draft),
+        "selection": {"pick": pick, "prospect": player, "team": team},
+        "state": _draft_public(draft, sess["id"]),
+    }))
+
+
 async def draft_players(request):
     """Export or merge the prospect pool without replacing draft history."""
     if request.method == "OPTIONS":
@@ -1345,6 +1445,10 @@ app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/api/draft/players", draft_players)
 app.router.add_post("/api/draft/players", draft_players)
 app.router.add_options("/api/draft/players", draft_players)
+app.router.add_post("/api/draft/test/setup", draft_test_setup)
+app.router.add_options("/api/draft/test/setup", draft_test_setup)
+app.router.add_post("/api/draft/test/step", draft_test_step)
+app.router.add_options("/api/draft/test/step", draft_test_step)
 app.router.add_get("/", health)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
