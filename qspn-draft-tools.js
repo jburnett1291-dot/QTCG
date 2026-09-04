@@ -98,7 +98,9 @@
   function updateDirectorTab() {
     const tab = document.querySelector(".qspn-director-tab");
     if (!tab) return;
-    const enabled = Boolean(latestState?.director_mode);
+    const enabled = Boolean(
+      latestState?.director_mode ?? latestState?.director?.enabled,
+    );
     tab.classList.toggle("is-active", enabled);
     tab.textContent = enabled ? "DIRECTOR: LIVE" : "DIRECTOR MODE";
     tab.setAttribute("aria-pressed", String(enabled));
@@ -121,7 +123,7 @@
       mountAdminTools();
       updateDirectorTab();
 
-      if (!state.director_mode) {
+      if (!(state.director_mode ?? state.director?.enabled)) {
         document.querySelector(".qspn-director-takeover")?.remove();
         return;
       }
