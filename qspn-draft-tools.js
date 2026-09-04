@@ -5,6 +5,7 @@
   let lastPromoId = null;
   let clearTimer = null;
   let latestState = null;
+  let lastPickCount = null;
 
   function button(label, onClick) {
     const element = document.createElement("button");
@@ -136,6 +137,23 @@
         document.querySelector(".qspn-director-takeover")?.remove();
         return;
       }
+      const nodeDirectorEnabled = state.director?.enabled && state.director?.autoShow;
+      if (lastPickCount === null) lastPickCount = state.picks?.length || 0;
+      if (nodeDirectorEnabled && (state.picks?.length || 0) > lastPickCount) {
+        const pick = state.picks[state.picks.length - 1];
+        const player = state.prospects?.find((item) => item.id === pick.prospectId);
+        const team = state.teams?.find((item) => item.id === pick.teamId);
+        if (player && team) {
+          showTakeover({
+            event_id: pick.id,
+            pick: pick.overall,
+            team: `${team.city} ${team.name}`,
+            player: player.name,
+          }, player);
+        }
+      }
+      lastPickCount = state.picks?.length || 0;
+
       const promo = state.promo;
       if (!promo || promo.event_id === lastPromoId) return;
       lastPromoId = promo.event_id;
