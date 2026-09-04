@@ -93,18 +93,18 @@
   }, 12000);
 })();
 
-/* QSPN Draft Tools loader: keeps GitHub Pages root compatible. */
+/* Load the owner/admin broadcast controls outside the compiled QTCG bundle. */
 (function loadQspnDraftTools() {
   if (!document.querySelector('link[data-qspn-draft-tools]')) {
-    const style = document.createElement('link');
+    var style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = './qspn-draft-tools.css';
+    style.href = './qspn-draft-tools.css?v=director-broadcast-2';
     style.dataset.qspnDraftTools = 'true';
     document.head.appendChild(style);
   }
   if (!document.querySelector('script[data-qspn-draft-tools]')) {
-    const script = document.createElement('script');
-    script.src = './qspn-draft-tools.js';
+    var script = document.createElement('script');
+    script.src = './qspn-draft-tools.js?v=director-broadcast-2';
     script.dataset.qspnDraftTools = 'true';
     document.body.appendChild(script);
   }
