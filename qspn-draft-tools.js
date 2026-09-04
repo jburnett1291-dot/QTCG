@@ -1,11 +1,9 @@
 (function () {
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
-  if (!isDraft) return;
-
   const session = () => localStorage.getItem("qcl-session") || "";
-  const director = new URLSearchParams(location.search).get("director") === "1";
   let lastPromoId = null;
   let clearTimer = null;
+  let latestState = null;
 
   function button(label, onClick) {
     const element = document.createElement("button");
@@ -42,14 +40,28 @@
     location.reload();
   }
 
-  function mountTools() {
+  async function setDirectorMode(enabled) {
+    const response = await fetch("/api/draft/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set_director_mode",
+        enabled,
+        session: session(),
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Director Mode update failed");
+    latestState = result.draft;
+    updateDirectorTab();
+  }
+
+  function mountAdminTools() {
+    if (!isDraft || latestState?.access !== "admin") return;
     if (document.querySelector(".qspn-draft-tools")) return;
     const tools = document.createElement("aside");
     tools.className = "qspn-draft-tools";
     tools.append(
-      button("DIRECTOR MODE", () => {
-        window.open(`${location.pathname}?director=1`, "qspn-director");
-      }),
       button("EXPORT PLAYERS JSON", () => {
         exportPlayers().catch((error) => alert(error.message));
       }),
@@ -68,7 +80,33 @@
     document.body.appendChild(tools);
   }
 
-  async function pollDirector() {
+  function mountDirectorTab() {
+    if (latestState?.access !== "admin" || document.querySelector(".qspn-director-tab")) return;
+    const warRoom = [...document.querySelectorAll("button, a")].find(
+      (element) => element.textContent.trim().toUpperCase() === "WAR ROOM",
+    );
+    if (!warRoom) return;
+    const tab = button("DIRECTOR MODE", () => {
+      setDirectorMode(!latestState?.director_mode).catch((error) => alert(error.message));
+    });
+    tab.className = "qspn-director-tab";
+    warRoom.parentElement?.appendChild(tab);
+    updateDirectorTab();
+  }
+
+  function updateDirectorTab() {
+    const tab = document.querySelector(".qspn-director-tab");
+    if (!tab) return;
+    const enabled = Boolean(latestState?.director_mode);
+    tab.classList.toggle("is-active", enabled);
+    tab.textContent = enabled ? "DIRECTOR: LIVE" : "DIRECTOR MODE";
+    tab.setAttribute("aria-pressed", String(enabled));
+    tab.title = enabled
+      ? "Director Mode is live for every Activity viewer. Click to disable."
+      : "Enable broadcast takeovers for every Activity viewer.";
+  }
+
+  async function pollDraftState() {
     if (!session()) return;
     try {
       const response = await fetch(
@@ -77,6 +115,15 @@
       );
       if (!response.ok) return;
       const state = await response.json();
+      latestState = state;
+      mountDirectorTab();
+      mountAdminTools();
+      updateDirectorTab();
+
+      if (!state.director_mode) {
+        document.querySelector(".qspn-director-takeover")?.remove();
+        return;
+      }
       const promo = state.promo;
       if (!promo || promo.event_id === lastPromoId) return;
       lastPromoId = promo.event_id;
@@ -118,10 +165,6 @@
     clearTimer = setTimeout(() => overlay.remove(), 12000);
   }
 
-  mountTools();
-  if (director) {
-    document.documentElement.classList.add("qspn-director-mode");
-    pollDirector();
-    setInterval(pollDirector, 1500);
-  }
+  pollDraftState();
+  setInterval(pollDraftState, 1500);
 })();
