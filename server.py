@@ -150,6 +150,11 @@ SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # points to master
 OWNER_ID = os.environ.get("OWNER_ID", "")  # Discord id with unlimited coins / free packs
 PACK_COST = int(os.environ.get("PACK_COST", "10"))  # base pack cost in coins
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
+DRAFT_PATH = os.environ.get("DRAFT_PATH", "qcl_draft_activity.json")
+_DRAFT_ADMIN_IDS = {
+    item.strip() for item in os.environ.get("DRAFT_ADMIN_IDS", OWNER_ID).split(",")
+    if item.strip()
+}
 PORT = int(os.environ.get("PORT", "8787"))
 
 # odds MUST match the bot's TVT_ODDS / TVT_PACK_SIZE
@@ -199,6 +204,281 @@ def _cors(resp):
     resp.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  LIVE DRAFT ACTIVITY API
+#  The Activity polls /api/draft/state; every mutation increments revision.
+#  This keeps all connected clients on the same board without trusting clients.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _draft_default():
+    return {
+        "revision": 0, "status": "setup", "teams": [], "coaches": {},
+        "players": {}, "order": [], "picks": [], "current_pick": 0,
+        "pick_seconds": 90, "deadline_at": None, "paused_remaining": None,
+        "protected_picks": [], "trades": [], "audit_log": [],
+        "promo": None,
+    }
+
+
+def _draft_normalize(data):
+    draft = _draft_default()
+    if isinstance(data, dict):
+        draft.update(data)
+    return draft
+
+
+def _draft_session(request, body=None):
+    token = request.query.get("session")
+    if isinstance(body, dict):
+        token = body.get("session") or token
+    return _read_session(token) if token else None
+
+
+def _draft_is_admin(uid):
+    return str(uid) in _DRAFT_ADMIN_IDS
+
+
+def _draft_team_for_user(draft, uid):
+    uid = str(uid)
+    return next(
+        (team for team, coach in draft.get("coaches", {}).items()
+         if str(coach) == uid),
+        None,
+    )
+
+
+def _draft_turn(draft):
+    index = int(draft.get("current_pick", 0))
+    order = draft.get("order", [])
+    return order[index] if 0 <= index < len(order) else None
+
+
+def _draft_audit(draft, action, uid, **details):
+    draft.setdefault("audit_log", []).append({
+        "at": time.time(), "action": action, "actor_id": str(uid) if uid else None,
+        "details": details,
+    })
+    draft["audit_log"] = draft["audit_log"][-2000:]
+
+
+def _draft_public(draft, uid):
+    """Return role-aware state; strategy lists remain private to their team."""
+    out = dict(draft)
+    out["server_time"] = time.time()
+    out["access"] = (
+        "admin" if _draft_is_admin(uid)
+        else "coach" if _draft_team_for_user(draft, uid)
+        else "player"
+    )
+    out["my_team"] = _draft_team_for_user(draft, uid)
+    strategies = draft.get("strategies", {})
+    out["strategies"] = (
+        strategies if _draft_is_admin(uid)
+        else ({out["my_team"]: strategies.get(out["my_team"], {})}
+              if out["my_team"] else {})
+    )
+    return out
+
+
+def _draft_available(draft):
+    return [
+        player for player in draft.get("players", {}).values()
+        if not player.get("drafted_by")
+    ]
+
+
+def _draft_rank(player):
+    for key in ("ovr", "overall", "rating", "rank_score"):
+        try:
+            return float(player.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            continue
+    return 1.0 if player.get("eligible", True) else 0.0
+
+
+def _draft_auto_player(draft, team):
+    available = [p for p in _draft_available(draft) if p.get("eligible", True)]
+    if not available:
+        available = _draft_available(draft)
+    roster_positions = {
+        str(p.get("position", "")).lower() for p in draft.get("players", {}).values()
+        if p.get("drafted_by") == team
+    }
+    return max(
+        available,
+        key=lambda p: (
+            str(p.get("position", "")).lower() not in roster_positions,
+            _draft_rank(p),
+        ),
+        default=None,
+    )
+
+
+def _draft_record_pick(draft, player, uid, source):
+    turn = _draft_turn(draft)
+    if not turn or not player or player.get("drafted_by"):
+        return None
+    player["drafted_by"] = turn["team"]
+    player["pick_number"] = turn["pick"]
+    player["drafted_at"] = time.time()
+    pick = {
+        **turn, "player": player.get("gamertag", "Unknown"),
+        "player_id": str(player.get("discord_id", "")),
+        "timestamp": time.time(), "source": source,
+    }
+    draft.setdefault("picks", []).append(pick)
+    draft["current_pick"] = int(draft.get("current_pick", 0)) + 1
+    next_turn = _draft_turn(draft)
+    if next_turn:
+        draft["deadline_at"] = time.time() + int(draft.get("pick_seconds", 90))
+    else:
+        draft["status"], draft["deadline_at"] = "complete", None
+    draft["promo"] = {
+        "event_id": f"pick-{pick['pick']}-{int(time.time() * 1000)}",
+        "kind": "pick", "player": pick["player"], "team": pick["team"],
+        "pick": pick["pick"], "media_url": player.get("hype_video_url"),
+        "entrance_audio_url": player.get("entrance_audio_url"),
+        "duck_background_audio": True, "started_at": time.time(),
+    }
+    _draft_audit(draft, "pick_recorded", uid, **pick)
+    return pick
+
+
+async def draft_state(request):
+    sess = _draft_session(request)
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    async with aiohttp.ClientSession() as session:
+        draft, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(draft)
+        # The server is authoritative for an expired clock.
+        if (draft.get("status") == "active"
+                and time.time() >= float(draft.get("deadline_at") or 0)):
+            turn = _draft_turn(draft)
+            if turn:
+                player = _draft_auto_player(draft, turn["team"])
+                if player:
+                    _draft_record_pick(draft, player, None, "clock_auto_pick")
+                    draft["revision"] = int(draft.get("revision", 0)) + 1
+                    await _gh_put(
+                        session, DRAFT_PATH, draft, sha,
+                        f"draft activity: timeout pick #{turn['pick']}"
+                    )
+    return _cors(web.json_response(_draft_public(draft, sess["id"])))
+
+
+async def draft_action(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    sess = _draft_session(request, body)
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    uid, action = str(sess["id"]), str(body.get("action", "")).lower()
+    async with aiohttp.ClientSession() as session:
+        draft_raw, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(draft_raw)
+        admin = _draft_is_admin(uid)
+        my_team = _draft_team_for_user(draft, uid)
+
+        if action == "pick":
+            turn = _draft_turn(draft)
+            if draft.get("status") != "active" or not turn:
+                return _cors(web.json_response({"error": "draft is not active"}, status=409))
+            if not admin and my_team != turn["team"]:
+                return _cors(web.json_response({"error": "your team is not on the clock"}, status=403))
+            wanted = str(body.get("player_id") or body.get("player", "")).lower()
+            player = next(
+                (p for p in _draft_available(draft)
+                 if str(p.get("discord_id", "")).lower() == wanted
+                 or str(p.get("gamertag", "")).lower() == wanted),
+                None,
+            )
+            if not player:
+                return _cors(web.json_response({"error": "player unavailable"}, status=404))
+            _draft_record_pick(draft, player, uid, "commissioner_override" if admin and my_team != turn["team"] else "activity")
+        elif action == "strategy":
+            if not my_team and not admin:
+                return _cors(web.json_response({"error": "coach access required"}, status=403))
+            team = str(body.get("team") or my_team)
+            if not admin and team != my_team:
+                return _cors(web.json_response({"error": "wrong team"}, status=403))
+            draft.setdefault("strategies", {})[team] = {
+                "targets": list(body.get("targets", []))[:50],
+                "notes": str(body.get("notes", ""))[:4000],
+                "updated_at": time.time(), "updated_by": uid,
+            }
+            _draft_audit(draft, "strategy_updated", uid, team=team)
+        elif not admin:
+            return _cors(web.json_response({"error": "commissioner access required"}, status=403))
+        elif action == "pause":
+            if draft.get("status") == "active":
+                draft["paused_remaining"] = max(1, int(float(draft.get("deadline_at") or time.time()) - time.time()))
+                draft["status"], draft["deadline_at"] = "paused", None
+            elif draft.get("status") == "paused":
+                draft["status"] = "active"
+                draft["deadline_at"] = time.time() + int(draft.pop("paused_remaining", None) or draft.get("pick_seconds", 90))
+            _draft_audit(draft, "draft_pause_toggled", uid, status=draft["status"])
+        elif action == "advance":
+            turn = _draft_turn(draft)
+            if not turn:
+                return _cors(web.json_response({"error": "no remaining pick"}, status=409))
+            draft["current_pick"] += 1
+            draft["deadline_at"] = time.time() + int(draft.get("pick_seconds", 90))
+            _draft_audit(draft, "force_advance", uid, skipped=turn)
+        elif action == "undo":
+            if not draft.get("picks"):
+                return _cors(web.json_response({"error": "no pick to undo"}, status=409))
+            pick = draft["picks"].pop()
+            player = next(
+                (p for p in draft.get("players", {}).values()
+                 if str(p.get("discord_id")) == str(pick.get("player_id"))),
+                None,
+            )
+            if player:
+                player["drafted_by"] = None
+                player.pop("pick_number", None)
+                player.pop("drafted_at", None)
+            draft["current_pick"] = max(0, int(draft["current_pick"]) - 1)
+            draft["status"] = "active"
+            draft["deadline_at"] = time.time() + int(draft.get("pick_seconds", 90))
+            _draft_audit(draft, "pick_reversed", uid, pick=pick)
+        elif action == "protect":
+            pick_no = int(body.get("pick"))
+            protected = set(int(x) for x in draft.get("protected_picks", []))
+            protected.symmetric_difference_update({pick_no})
+            draft["protected_picks"] = sorted(protected)
+            _draft_audit(draft, "pick_protection_toggled", uid, pick=pick_no, protected=pick_no in protected)
+        elif action == "trade":
+            pick_no, to_team = int(body.get("pick")), str(body.get("to_team", ""))
+            slot = next((x for x in draft.get("order", []) if int(x["pick"]) == pick_no), None)
+            made = {int(x["pick"]) for x in draft.get("picks", [])}
+            if not slot or pick_no in made or pick_no in set(draft.get("protected_picks", [])):
+                return _cors(web.json_response({"error": "pick unavailable or protected"}, status=409))
+            if to_team not in draft.get("teams", []):
+                return _cors(web.json_response({"error": "unknown destination team"}, status=400))
+            old_team, slot["team"] = slot["team"], to_team
+            draft.setdefault("trades", []).append({
+                "at": time.time(), "pick": pick_no, "from": old_team,
+                "to": to_team, "approved_by": uid,
+            })
+            _draft_audit(draft, "pick_traded", uid, pick=pick_no, from_team=old_team, to_team=to_team)
+        elif action == "clear_promo":
+            _draft_audit(draft, "promo_completed", uid, event_id=(draft.get("promo") or {}).get("event_id"))
+            draft["promo"] = None
+        else:
+            return _cors(web.json_response({"error": "unknown action"}, status=400))
+
+        draft["revision"] = int(draft.get("revision", 0)) + 1
+        ok = await _gh_put(session, DRAFT_PATH, draft, sha, f"draft activity: {action}")
+        if not ok:
+            return _cors(web.json_response({"error": "draft changed; refresh and retry"}, status=409))
+    return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
 
 
 # ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
@@ -925,6 +1205,9 @@ app.router.add_options("/api/binder", get_binder)
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
+app.router.add_get("/api/draft/state", draft_state)
+app.router.add_post("/api/draft/action", draft_action)
+app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/", health)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
