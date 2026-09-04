@@ -1,5 +1,6 @@
 (function () {
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
+  if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");
   const session = () => localStorage.getItem("qcl-session") || "";
   let lastPromoId = null;
   let clearTimer = null;
