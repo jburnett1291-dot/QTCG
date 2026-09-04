@@ -313,6 +313,15 @@
   .promo-name { font-size:32px; font-weight:950; color:#f4c95d; margin:12px; text-align:center; }
   @media(max-width:760px){.draft-shell{grid-template-columns:1fr;height:calc(100vh - 56px);overflow:auto}
     .draft-main,.draft-side{overflow:visible}.draft-board{grid-template-columns:repeat(2,1fr)}}
+
+  /* Production War Room embed: the Discord Activity uses the exact deployed React UI. */
+  #view-draft { padding:0; background:#060b16; }
+  #view-draft.show { display:block; }
+  .war-room-frame { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; background:#060b16; }
+  #view-draft .legacy-draft-shell { display:none !important; }
+  body.draft-mode .topbar { display:none; }
+  .draft-return { position:fixed; left:8px; bottom:8px; z-index:1001; border:1px solid #ffb914; border-radius:8px; padding:8px 12px; background:rgba(6,11,22,.92); color:#ffb914; font:900 11px system-ui,sans-serif; cursor:pointer; box-shadow:0 6px 22px rgba(0,0,0,.45); }
+  .draft-return:hover { color:#060b16; background:#ffb914; }
 </style>
 </head>
 <body>
@@ -383,7 +392,9 @@
   </div>
 
   <div id="view-draft" class="view" style="justify-content:flex-start;">
-    <div class="draft-shell">
+    <iframe class="war-room-frame" title="QCL Draft War Room" src="https://qcl-draft-war-room.replit.app" allow="autoplay; clipboard-write; fullscreen"></iframe>
+    <button id="draft-return" class="draft-return" type="button">RETURN TO QTCG</button>
+    <div class="draft-shell legacy-draft-shell">
       <section class="draft-main">
         <div class="draft-head"><div><div class="draft-title">QCL DRAFT NIGHT</div>
           <div id="draft-turn" class="draft-message">Connecting to war room…</div></div>
@@ -640,6 +651,7 @@
       btnBack.style.display = 'block';
     }
     const inDraft=viewId==='view-draft';
+    document.body.classList.toggle('draft-mode',inDraft);
     document.getElementById('tab-qtcg').classList.toggle('active',!inDraft);
     document.getElementById('tab-draft').classList.toggle('active',inDraft);
     document.getElementById('bank').style.display=inDraft?'none':'inline-block';
@@ -664,7 +676,7 @@
   const lockBtn = document.getElementById('lineup-lock-btn');
   if(lockBtn) lockBtn.addEventListener('click', lockLineup);
   document.getElementById('tab-draft').addEventListener('click', () => {
-    switchView('view-draft'); startDraftSync();
+    switchView('view-draft');
   });
   document.getElementById('tab-qtcg').addEventListener('click', () => {
     clearInterval(draftPoll); switchView('view-home');
@@ -1062,3 +1074,6 @@
 </script>
 </body>
 </html>
+  document.getElementById('draft-return').addEventListener('click', () => {
+    clearInterval(draftPoll); switchView('view-home');
+  });
