@@ -82,12 +82,16 @@
   }
 
   function mountDirectorTab() {
-    if (latestState?.access !== "admin" || document.querySelector(".qspn-director-tab")) return;
+    if (document.querySelector(".qspn-director-tab")) return;
     const warRoom = [...document.querySelectorAll("button, a")].find(
       (element) => element.textContent.trim().toUpperCase() === "WAR ROOM",
     );
     if (!warRoom) return;
     const tab = button("DIRECTOR MODE", () => {
+      if (latestState?.access !== "admin") {
+        alert("Director Mode is locked. Sign in as the bot owner or an approved draft admin.");
+        return;
+      }
       setDirectorMode(!latestState?.director_mode).catch((error) => alert(error.message));
     });
     tab.className = "qspn-director-tab";
@@ -98,15 +102,20 @@
   function updateDirectorTab() {
     const tab = document.querySelector(".qspn-director-tab");
     if (!tab) return;
+    const authorized = latestState?.access === "admin";
     const enabled = Boolean(
       latestState?.director_mode ?? latestState?.director?.enabled,
     );
-    tab.classList.toggle("is-active", enabled);
-    tab.textContent = enabled ? "DIRECTOR: LIVE" : "DIRECTOR MODE";
-    tab.setAttribute("aria-pressed", String(enabled));
-    tab.title = enabled
-      ? "Director Mode is live for every Activity viewer. Click to disable."
-      : "Enable broadcast takeovers for every Activity viewer.";
+    tab.classList.toggle("is-active", authorized && enabled);
+    tab.classList.toggle("is-locked", !authorized);
+    tab.textContent = authorized && enabled ? "DIRECTOR: LIVE" : "DIRECTOR MODE";
+    tab.setAttribute("aria-pressed", String(authorized && enabled));
+    tab.setAttribute("aria-disabled", String(!authorized));
+    tab.title = !authorized
+      ? "Locked — bot owner or approved draft admin access required."
+      : enabled
+        ? "Director Mode is live for every Activity viewer. Click to disable."
+        : "Enable broadcast takeovers for every Activity viewer.";
   }
 
   async function pollDraftState() {
@@ -168,6 +177,8 @@
     clearTimer = setTimeout(() => overlay.remove(), 12000);
   }
 
+  mountDirectorTab();
+  setInterval(mountDirectorTab, 500);
   pollDraftState();
   setInterval(pollDraftState, 1500);
 })();
