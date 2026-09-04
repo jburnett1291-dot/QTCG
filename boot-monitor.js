@@ -98,13 +98,13 @@
   if (!document.querySelector('link[href*="qspn-draft-tools.css"]')) {
     var style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = './qspn-draft-tools.css?v=director-broadcast-2';
+    style.href = './qspn-draft-tools.css?v=director-visible-3';
     style.dataset.qspnDraftTools = 'true';
     document.head.appendChild(style);
   }
   if (!document.querySelector('script[src*="qspn-draft-tools.js"]')) {
     var script = document.createElement('script');
-    script.src = './qspn-draft-tools.js?v=director-broadcast-2';
+    script.src = './qspn-draft-tools.js?v=director-visible-3';
     script.dataset.qspnDraftTools = 'true';
     document.body.appendChild(script);
   }
