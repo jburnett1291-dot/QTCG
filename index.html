@@ -681,6 +681,9 @@
   document.getElementById('tab-qtcg').addEventListener('click', () => {
     clearInterval(draftPoll); switchView('view-home');
   });
+  document.getElementById('draft-return').addEventListener('click', () => {
+    clearInterval(draftPoll); switchView('view-home');
+  });
 
   btnBack.addEventListener('click', () => {
     if(document.getElementById('view-draft').classList.contains('show')){
@@ -1074,6 +1077,3 @@
 </script>
 </body>
 </html>
-  document.getElementById('draft-return').addEventListener('click', () => {
-    clearInterval(draftPoll); switchView('view-home');
-  });
