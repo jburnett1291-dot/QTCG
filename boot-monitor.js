@@ -108,4 +108,15 @@
     script.dataset.qspnDraftTools = 'true';
     document.body.appendChild(script);
   }
+  if (!document.querySelector('link[href*="qspn-test-mode.css"]')) {
+    var testStyle = document.createElement('link');
+    testStyle.rel = 'stylesheet';
+    testStyle.href = './qspn-test-mode.css?v=test-lab-1';
+    document.head.appendChild(testStyle);
+  }
+  if (!document.querySelector('script[src*="qspn-test-mode.js"]')) {
+    var testScript = document.createElement('script');
+    testScript.src = './qspn-test-mode.js?v=test-lab-1';
+    document.body.appendChild(testScript);
+  }
 })();
