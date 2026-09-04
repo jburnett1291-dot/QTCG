@@ -1,0 +1,121 @@
+.qspn-draft-tools {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 45;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #24466f;
+  border-radius: 12px;
+  background: rgba(6, 11, 22, .94);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  backdrop-filter: blur(12px);
+}
+
+.qspn-tool-button {
+  border: 1px solid #345b8a;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #132743;
+  color: #fff;
+  font: 800 11px/1 Inter, sans-serif;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.qspn-tool-button:first-child {
+  border-color: #f4c95d;
+  color: #f4c95d;
+}
+
+.qspn-tool-button:hover { background: #1b365c; }
+
+.qspn-director-mode .qspn-draft-tools { opacity: .18; }
+.qspn-director-mode .qspn-draft-tools:hover { opacity: 1; }
+
+.qspn-director-takeover {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 5vw;
+  box-sizing: border-box;
+  text-align: center;
+  color: #fff;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(36, 70, 111, .7), transparent 42%),
+    linear-gradient(135deg, #050914, #0c162c 58%, #060b16);
+  animation: qspn-in .45s ease-out both;
+}
+
+.qspn-director-takeover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 16px solid #f4c95d;
+  pointer-events: none;
+}
+
+.qspn-director-kicker {
+  color: #f4c95d;
+  font-weight: 900;
+  letter-spacing: .24em;
+}
+
+.qspn-director-team {
+  margin-top: 22px;
+  font-size: clamp(28px, 5vw, 72px);
+  font-weight: 900;
+}
+
+.qspn-director-selects {
+  margin: 14px 0;
+  color: #9db2ce;
+  font-weight: 800;
+  letter-spacing: .32em;
+}
+
+.qspn-director-takeover h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(54px, 9vw, 148px);
+  line-height: .9;
+  font-weight: 900;
+  text-transform: uppercase;
+  text-shadow: 0 10px 40px rgba(0, 0, 0, .7);
+}
+
+.qspn-director-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.qspn-director-meta span {
+  border: 1px solid #497db4;
+  border-radius: 999px;
+  padding: 9px 16px;
+  background: #132743;
+  font-weight: 800;
+}
+
+.qspn-director-takeover video {
+  width: min(860px, 80vw);
+  max-height: 42vh;
+  margin-top: 28px;
+  border: 1px solid #497db4;
+  border-radius: 14px;
+  background: #000;
+}
+
+@keyframes qspn-in {
+  from { opacity: 0; transform: scale(1.025); }
+  to { opacity: 1; transform: scale(1); }
+}
