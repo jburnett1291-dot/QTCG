@@ -218,7 +218,7 @@ def _draft_default():
         "players": {}, "order": [], "picks": [], "current_pick": 0,
         "pick_seconds": 90, "deadline_at": None, "paused_remaining": None,
         "protected_picks": [], "trades": [], "audit_log": [],
-        "promo": None,
+        "promo": None, "director_mode": False,
     }
 
 
@@ -492,6 +492,10 @@ async def draft_action(request):
         elif action == "clear_promo":
             _draft_audit(draft, "promo_completed", uid, event_id=(draft.get("promo") or {}).get("event_id"))
             draft["promo"] = None
+        elif action == "set_director_mode":
+            enabled = bool(body.get("enabled"))
+            draft["director_mode"] = enabled
+            _draft_audit(draft, "director_mode_changed", uid, enabled=enabled)
         else:
             return _cors(web.json_response({"error": "unknown action"}, status=400))
 
