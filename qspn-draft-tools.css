@@ -24,15 +24,30 @@
   cursor: pointer;
 }
 
-.qspn-tool-button:first-child {
-  border-color: #f4c95d;
-  color: #f4c95d;
-}
-
 .qspn-tool-button:hover { background: #1b365c; }
 
-.qspn-director-mode .qspn-draft-tools { opacity: .18; }
-.qspn-director-mode .qspn-draft-tools:hover { opacity: 1; }
+.qspn-director-tab {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 13px;
+  background: transparent;
+  color: #9db2ce;
+  font: 800 11px/1 Inter, sans-serif;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.qspn-director-tab:hover {
+  color: #fff;
+  background: #132743;
+}
+
+.qspn-director-tab.is-active {
+  border-color: #f4c95d;
+  color: #f4c95d;
+  background: rgba(244, 201, 93, .12);
+  box-shadow: 0 0 18px rgba(244, 201, 93, .2);
+}
 
 .qspn-director-takeover {
   position: fixed;
