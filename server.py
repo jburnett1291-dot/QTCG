@@ -222,6 +222,22 @@ def _draft_default():
     }
 
 
+# A two-second process cache lets dozens of Activity clients share one GitHub
+# read while keeping the draft board effectively live.
+_DRAFT_CACHE = {"t": 0.0, "draft": None}
+
+
+async def _draft_load_shared(session):
+    now = time.time()
+    cached = _DRAFT_CACHE.get("draft")
+    if isinstance(cached, dict) and now - float(_DRAFT_CACHE.get("t", 0)) < 2:
+        return _draft_normalize(cached), None
+    draft, sha = await _gh_get(session, DRAFT_PATH)
+    draft = _draft_normalize(draft)
+    _DRAFT_CACHE.update({"t": now, "draft": draft})
+    return draft, sha
+
+
 def _draft_normalize(data):
     draft = _draft_default()
     if isinstance(data, dict):
@@ -351,11 +367,15 @@ async def draft_state(request):
     if not sess:
         return _cors(web.json_response({"error": "not logged in"}, status=401))
     async with aiohttp.ClientSession() as session:
-        draft, sha = await _gh_get(session, DRAFT_PATH)
-        draft = _draft_normalize(draft)
+        draft, sha = await _draft_load_shared(session)
         # The server is authoritative for an expired clock.
         if (draft.get("status") == "active"
                 and time.time() >= float(draft.get("deadline_at") or 0)):
+            # Cached reads do not carry a GitHub SHA. Refresh before a timeout
+            # mutation so concurrent draft actions remain conflict-safe.
+            if sha is None:
+                draft, sha = await _gh_get(session, DRAFT_PATH)
+                draft = _draft_normalize(draft)
             turn = _draft_turn(draft)
             if turn:
                 player = _draft_auto_player(draft, turn["team"])
@@ -366,6 +386,7 @@ async def draft_state(request):
                         session, DRAFT_PATH, draft, sha,
                         f"draft activity: timeout pick #{turn['pick']}"
                     )
+                    _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
     return _cors(web.json_response(_draft_public(draft, sess["id"])))
 
 
@@ -478,6 +499,7 @@ async def draft_action(request):
         ok = await _gh_put(session, DRAFT_PATH, draft, sha, f"draft activity: {action}")
         if not ok:
             return _cors(web.json_response({"error": "draft changed; refresh and retry"}, status=409))
+        _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
     return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
 
 
