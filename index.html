@@ -21,6 +21,11 @@
     background:linear-gradient(#0d1117,transparent); z-index:10; }
   .topbar img { width:26px; height:26px; border-radius:50%; }
   .topbar .who { color:#fff; font-weight:700; }
+  .app-tabs { display:flex; gap:4px; margin-left:12px; padding:3px;
+    border:1px solid #27354c; border-radius:10px; background:rgba(8,18,34,.85); }
+  .app-tab { border:0; border-radius:7px; padding:7px 12px; background:transparent;
+    color:#8b949e; font-size:12px; font-weight:900; cursor:pointer; }
+  .app-tab.active { color:#fff; background:#5865f2; box-shadow:0 3px 10px rgba(88,101,242,.35); }
   .back-btn { background:none; border:none; color:#8b949e; font-size:14px; font-weight:bold; 
     cursor:pointer; display:none; padding-right:10px; }
   .back-btn:active { color:#fff; }
@@ -271,6 +276,43 @@
   }
   .view { position:relative; }
   .view > * { position:relative; z-index:1; }
+  /* ---------- LIVE DRAFT WAR ROOM ---------- */
+  .draft-shell { width:min(1180px,96vw); height:calc(100vh - 72px); display:grid;
+    grid-template-columns:1fr 310px; gap:14px; padding:12px; overflow:hidden; }
+  .draft-main,.draft-side,.draft-admin { background:rgba(8,18,34,.92); border:1px solid #24466f;
+    border-radius:16px; padding:14px; overflow:auto; }
+  .draft-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .draft-title { font-size:24px; font-weight:950; letter-spacing:2px; color:#f4c95d; }
+  .draft-clock { font:900 28px ui-monospace,monospace; color:#fff; background:#7f1d1d;
+    border-radius:12px; padding:8px 14px; min-width:100px; text-align:center; }
+  .draft-clock.paused { background:#374151; color:#f4c95d; }
+  .draft-board { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:9px; }
+  .prospect { background:#132743; border:1px solid #2b5d94; border-radius:11px; padding:10px;
+    cursor:pointer; min-height:92px; transition:.15s; }
+  .prospect:hover { border-color:#00a8ff; transform:translateY(-2px); }
+  .prospect.drafted { opacity:.3; filter:grayscale(1); pointer-events:none; }
+  .prospect.selected { border:2px solid #f4c95d; background:#263653; }
+  .prospect b { display:block; font-size:14px; margin-bottom:5px; }
+  .prospect small { color:#9db2ce; }
+  .prospect-photo { width:42px; height:42px; border-radius:9px; object-fit:cover;
+    float:right; margin-left:7px; border:1px solid #497db4; }
+  .draft-btn { border:0; border-radius:9px; padding:9px 11px; background:#1261a6; color:#fff;
+    font-weight:850; cursor:pointer; margin:3px; }
+  .draft-btn.gold { background:#b8860b; }.draft-btn.red{background:#a52a2a}
+  .draft-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .draft-picks { font-size:12px; line-height:1.65; color:#cbd5e1; }
+  .draft-picks b { color:#fff; }
+  .draft-message { color:#9db2ce; min-height:22px; margin:8px 0; font-size:12px; }
+  .draft-admin { display:none; margin-top:10px; padding:10px; }
+  .draft-admin.show { display:block; }
+  .draft-field { width:100%; background:#0b1729; border:1px solid #2b5d94; color:#fff;
+    border-radius:8px; padding:8px; margin:4px 0; }
+  .promo-overlay { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.92);
+    display:none; align-items:center; justify-content:center; flex-direction:column; padding:20px; }
+  .promo-overlay.show { display:flex; }.promo-overlay video{max-width:92vw;max-height:70vh;border-radius:16px}
+  .promo-name { font-size:32px; font-weight:950; color:#f4c95d; margin:12px; text-align:center; }
+  @media(max-width:760px){.draft-shell{grid-template-columns:1fr;height:calc(100vh - 56px);overflow:auto}
+    .draft-main,.draft-side{overflow:visible}.draft-board{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -279,6 +321,10 @@
     <button class="back-btn" id="btn-back">◀ Back</button>
     <img id="pfp" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="">
     <span>Opening as <span class="who" id="who">…</span></span>
+    <nav class="app-tabs" aria-label="Activity sections">
+      <button id="tab-qtcg" class="app-tab active">QTCG</button>
+      <button id="tab-draft" class="app-tab">DRAFT WAR ROOM</button>
+    </nav>
     <span class="bank" id="bank">💰 —</span>
   </div>
 
@@ -336,6 +382,39 @@
     <div id="binder-grid" class="binder-grid"></div>
   </div>
 
+  <div id="view-draft" class="view" style="justify-content:flex-start;">
+    <div class="draft-shell">
+      <section class="draft-main">
+        <div class="draft-head"><div><div class="draft-title">QCL DRAFT NIGHT</div>
+          <div id="draft-turn" class="draft-message">Connecting to war room…</div></div>
+          <div id="draft-clock" class="draft-clock">--:--</div></div>
+        <div id="draft-board" class="draft-board"></div>
+      </section>
+      <aside class="draft-side">
+        <button id="draft-pick-btn" class="draft-btn gold" disabled>LOCK IN PICK</button>
+        <button id="draft-refresh-btn" class="draft-btn">REFRESH</button>
+        <div id="draft-msg" class="draft-message"></div>
+        <h3>Pick Ledger</h3><div id="draft-picks" class="draft-picks"></div>
+        <div id="draft-admin" class="draft-admin">
+          <h3>Commissioner Override</h3>
+          <button class="draft-btn" data-draft-action="pause">Pause / Resume</button>
+          <button class="draft-btn red" data-draft-action="undo">Undo Pick</button>
+          <button class="draft-btn red" data-draft-action="advance">Force Advance</button>
+          <input id="trade-pick" class="draft-field" type="number" placeholder="Pick number">
+          <select id="trade-team" class="draft-field"></select>
+          <button id="trade-btn" class="draft-btn">Trade Pick</button>
+          <button id="protect-btn" class="draft-btn">Toggle Protection</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div id="promo-overlay" class="promo-overlay">
+    <div id="promo-name" class="promo-name"></div>
+    <video id="promo-video" playsinline controls></video>
+    <audio id="promo-audio"></audio>
+    <button id="promo-close" class="draft-btn">Continue Draft</button>
+  </div>
+
 <script type="module">
   // ---- CONSTANTS & SETUP ----
   const IN_DISCORD = location.hostname.endsWith("discordsays.com");
@@ -353,6 +432,7 @@
     "view-lineup":  "lineup.png",
     "view-packs":   "packs.png",
     "view-starter": "starter.png",
+    "view-draft":   "draft.png",
   };
   const _bgApplied = {};
   function applyBackground(viewId){
@@ -559,6 +639,10 @@
     } else {
       btnBack.style.display = 'block';
     }
+    const inDraft=viewId==='view-draft';
+    document.getElementById('tab-qtcg').classList.toggle('active',!inDraft);
+    document.getElementById('tab-draft').classList.toggle('active',inDraft);
+    document.getElementById('bank').style.display=inDraft?'none':'inline-block';
   }
 
   function resetPackUI() {
@@ -579,8 +663,19 @@
   if(navPlay) navPlay.addEventListener('click', () => { switchView('view-lineup'); loadLineup(); });
   const lockBtn = document.getElementById('lineup-lock-btn');
   if(lockBtn) lockBtn.addEventListener('click', lockLineup);
+  document.getElementById('tab-draft').addEventListener('click', () => {
+    switchView('view-draft'); startDraftSync();
+  });
+  document.getElementById('tab-qtcg').addEventListener('click', () => {
+    clearInterval(draftPoll); switchView('view-home');
+  });
 
-  btnBack.addEventListener('click', () => switchView('view-home'));
+  btnBack.addEventListener('click', () => {
+    if(document.getElementById('view-draft').classList.contains('show')){
+      clearInterval(draftPoll);
+    }
+    switchView('view-home');
+  });
   applyBackground('view-home');   // home is visible on load
 
   // ---- BINDER LOGIC ----
@@ -713,6 +808,105 @@
     b.addEventListener('click', ()=>{ selectedStake=+b.dataset.stake; refreshStakeUI(); });
   });
   refreshStakeUI();
+
+  // ---- LIVE DRAFT WAR ROOM ----
+  let draftState=null, draftSelected=null, draftPoll=null, lastPromoId=null;
+  const draftBoard=document.getElementById('draft-board');
+  const draftMsg=document.getElementById('draft-msg');
+  const draftPickBtn=document.getElementById('draft-pick-btn');
+
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+
+  function startDraftSync(){
+    loadDraft();
+    clearInterval(draftPoll);
+    draftPoll=setInterval(()=>{
+      if(document.getElementById('view-draft').classList.contains('show')) loadDraft(true);
+    },2000);
+  }
+  async function loadDraft(quiet=false){
+    if(!sessionToken){ draftMsg.textContent='Open this Activity inside Discord to enter.'; return; }
+    try{
+      const r=await fetch(PULL_SERVER+'/api/draft/state?session='+encodeURIComponent(sessionToken));
+      const d=await r.json();
+      if(!r.ok) throw new Error(d.error||'Draft unavailable');
+      draftState=d; renderDraft();
+      if(d.promo && d.promo.event_id!==lastPromoId) playDraftPromo(d.promo);
+      if(!quiet) draftMsg.textContent=`Connected · ${d.access} access`;
+    }catch(e){ draftMsg.textContent=e.message; }
+  }
+  function renderDraft(){
+    if(!draftState)return;
+    const d=draftState, turn=d.order?.[d.current_pick];
+    document.getElementById('draft-turn').innerHTML=turn
+      ? `<b>${esc(turn.team)}</b> is on the clock · Pick #${turn.pick}`
+      : `Draft status: <b>${esc(d.status)}</b>`;
+    const seconds=d.status==='paused'
+      ? Number(d.paused_remaining||0)
+      : Math.max(0,Math.ceil(Number(d.deadline_at||0)-Number(d.server_time||Date.now()/1000)));
+    const clock=document.getElementById('draft-clock');
+    clock.textContent=d.status==='paused'?'PAUSED':`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+    clock.classList.toggle('paused',d.status==='paused');
+    draftBoard.innerHTML='';
+    Object.values(d.players||{}).sort((a,b)=>Number(b.ovr||b.rating||0)-Number(a.ovr||a.rating||0))
+      .forEach(p=>{
+        const el=document.createElement('div');
+        el.className='prospect'+(p.drafted_by?' drafted':'')+
+          (String(draftSelected)===String(p.discord_id)?' selected':'');
+        el.innerHTML=(p.photo_url?`<img class="prospect-photo" src="${esc(p.photo_url)}" alt="">`:'')+
+          `<b>${esc(p.gamertag||'Unknown')}</b><small>${esc(p.position||'Open')} · ${esc(p.build||'Build pending')}<br>${esc(p.ovr||p.rating||'—')} OVR ${p.drafted_by?'· '+esc(p.drafted_by):''}</small>`;
+        if(!p.drafted_by) el.onclick=()=>{draftSelected=p.discord_id;renderDraft();};
+        draftBoard.appendChild(el);
+      });
+    document.getElementById('draft-picks').innerHTML=(d.picks||[]).slice().reverse().slice(0,30)
+      .map(p=>`#${p.pick} <b>${esc(p.team)}</b> — ${esc(p.player)}`).join('<br>')||'No picks yet.';
+    const canPick=d.status==='active' && turn &&
+      (d.access==='admin'||(d.access==='coach'&&d.my_team===turn.team));
+    draftPickBtn.disabled=!canPick||!draftSelected;
+    document.getElementById('draft-admin').classList.toggle('show',d.access==='admin');
+    const teams=document.getElementById('trade-team');
+    teams.innerHTML=(d.teams||[]).map(t=>`<option>${esc(t)}</option>`).join('');
+  }
+  async function draftAction(action, extra={}){
+    if(!sessionToken)return;
+    draftMsg.textContent='Submitting…';
+    try{
+      const r=await fetch(PULL_SERVER+'/api/draft/action',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session:sessionToken,action,...extra})
+      });
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Action failed');
+      draftState=d.draft; draftSelected=null; renderDraft(); draftMsg.textContent='Saved.';
+    }catch(e){draftMsg.textContent=e.message;}
+  }
+  draftPickBtn.onclick=()=>draftAction('pick',{player_id:draftSelected});
+  document.getElementById('draft-refresh-btn').onclick=()=>loadDraft();
+  document.querySelectorAll('[data-draft-action]').forEach(b=>
+    b.onclick=()=>draftAction(b.dataset.draftAction));
+  document.getElementById('trade-btn').onclick=()=>draftAction('trade',{
+    pick:Number(document.getElementById('trade-pick').value),
+    to_team:document.getElementById('trade-team').value
+  });
+  document.getElementById('protect-btn').onclick=()=>draftAction('protect',{
+    pick:Number(document.getElementById('trade-pick').value)
+  });
+  function playDraftPromo(promo){
+    lastPromoId=promo.event_id;
+    const overlay=document.getElementById('promo-overlay'), video=document.getElementById('promo-video');
+    const audio=document.getElementById('promo-audio');
+    document.getElementById('promo-name').textContent=`PICK #${promo.pick} · ${promo.team} SELECTS ${promo.player}`;
+    overlay.classList.add('show');
+    video.style.display=promo.media_url?'block':'none';
+    if(promo.media_url){video.src=promo.media_url;video.volume=.35;video.play().catch(()=>{});}
+    if(promo.entrance_audio_url){audio.src=promo.entrance_audio_url;audio.volume=1;audio.play().catch(()=>{});}
+  }
+  document.getElementById('promo-close').onclick=()=>{
+    document.getElementById('promo-video').pause();document.getElementById('promo-audio').pause();
+    document.getElementById('promo-overlay').classList.remove('show');
+  };
 
   async function updateBank(){
     if(!sessionToken) return;
