@@ -92,3 +92,20 @@
     }
   }, 12000);
 })();
+
+/* QSPN Draft Tools loader: keeps GitHub Pages root compatible. */
+(function loadQspnDraftTools() {
+  if (!document.querySelector('link[data-qspn-draft-tools]')) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = './qspn-draft-tools.css';
+    style.dataset.qspnDraftTools = 'true';
+    document.head.appendChild(style);
+  }
+  if (!document.querySelector('script[data-qspn-draft-tools]')) {
+    const script = document.createElement('script');
+    script.src = './qspn-draft-tools.js';
+    script.dataset.qspnDraftTools = 'true';
+    document.body.appendChild(script);
+  }
+})();
