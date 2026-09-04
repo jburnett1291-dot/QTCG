@@ -503,6 +503,107 @@ async def draft_action(request):
     return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
 
 
+async def draft_players(request):
+    """Export or merge the prospect pool without replacing draft history."""
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+
+    body = {}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            return _cors(web.json_response({"error": "bad request"}, status=400))
+
+    sess = _draft_session(request, body)
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    uid = str(sess["id"])
+
+    async with aiohttp.ClientSession() as session:
+        draft_raw, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(draft_raw)
+
+        if request.method == "GET":
+            payload = {
+                "schema_version": 1,
+                "revision": int(draft.get("revision", 0)),
+                "players": list(draft.get("players", {}).values()),
+                "teams": list(draft.get("teams", [])),
+                "coaches": dict(draft.get("coaches", {})),
+                "exported_at": time.time(),
+            }
+            return _cors(web.json_response(payload, headers={
+                "Content-Disposition": 'attachment; filename="qspn_draft_players.json"',
+            }))
+
+        if not _draft_is_admin(uid):
+            return _cors(web.json_response(
+                {"error": "commissioner access required"}, status=403
+            ))
+
+        incoming = body.get("players", body)
+        if isinstance(incoming, list):
+            incoming = {
+                str(player.get("discord_id") or player.get("id") or
+                    player.get("gamertag") or index): player
+                for index, player in enumerate(incoming)
+                if isinstance(player, dict)
+            }
+        if not isinstance(incoming, dict):
+            return _cors(web.json_response(
+                {"error": "players must be an object or array"}, status=400
+            ))
+
+        players = draft.setdefault("players", {})
+        synced = 0
+        for player_id, raw_player in incoming.items():
+            if not isinstance(raw_player, dict):
+                continue
+            stable_id = str(
+                raw_player.get("discord_id") or raw_player.get("id") or player_id
+            )
+            existing = players.get(stable_id, {})
+            protected = {
+                key: existing[key]
+                for key in ("drafted_by", "pick_number", "drafted_at")
+                if key in existing
+            }
+            players[stable_id] = {
+                **existing,
+                **raw_player,
+                "discord_id": stable_id,
+                **protected,
+            }
+            synced += 1
+
+        if isinstance(body.get("teams"), list):
+            draft["teams"] = [str(team) for team in body["teams"] if str(team)]
+        if isinstance(body.get("coaches"), dict):
+            draft["coaches"] = {
+                str(team): str(coach)
+                for team, coach in body["coaches"].items()
+            }
+
+        _draft_audit(draft, "players_synced", uid, count=synced)
+        draft["revision"] = int(draft.get("revision", 0)) + 1
+        ok = await _gh_put(
+            session, DRAFT_PATH, draft, sha,
+            f"draft activity: synced {synced} players",
+        )
+        if not ok:
+            return _cors(web.json_response(
+                {"error": "draft changed; refresh and retry"}, status=409
+            ))
+        _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
+        return _cors(web.json_response({
+            "ok": True,
+            "synced": synced,
+            "revision": draft["revision"],
+            "draft": _draft_public(draft, uid),
+        }))
+
+
 # ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
 async def _gh_get(session, path):
     """Return (json_obj, sha) or ({}, None)."""
@@ -1230,6 +1331,9 @@ app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
 app.router.add_post("/api/draft/action", draft_action)
 app.router.add_options("/api/draft/action", draft_action)
+app.router.add_get("/api/draft/players", draft_players)
+app.router.add_post("/api/draft/players", draft_players)
+app.router.add_options("/api/draft/players", draft_players)
 app.router.add_get("/", health)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
