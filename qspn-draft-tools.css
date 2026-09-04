@@ -49,6 +49,18 @@
   box-shadow: 0 0 18px rgba(244, 201, 93, .2);
 }
 
+.qspn-director-tab.is-locked {
+  opacity: .58;
+  color: #7f91aa;
+  cursor: not-allowed;
+}
+
+.qspn-director-tab.is-locked::after {
+  content: " · LOCKED";
+  color: #66758b;
+  font-size: 9px;
+}
+
 .qspn-director-takeover {
   position: fixed;
   inset: 0;
