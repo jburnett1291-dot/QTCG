@@ -147,12 +147,19 @@ def _card_img_from_catalog(name, cat):
 
 
 SAVE_PATH = os.environ.get("SAVE_PATH", "fantasy_save.json")  # points to master save
-OWNER_ID = os.environ.get("OWNER_ID", "")  # Discord id with unlimited coins / free packs
+OWNER_ID = os.environ.get("OWNER_ID") or os.environ.get("BOT_OWNER_ID", "")
 PACK_COST = int(os.environ.get("PACK_COST", "10"))  # base pack cost in coins
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 DRAFT_PATH = os.environ.get("DRAFT_PATH", "qcl_draft_activity.json")
 _DRAFT_ADMIN_IDS = {
-    item.strip() for item in os.environ.get("DRAFT_ADMIN_IDS", OWNER_ID).split(",")
+    item.strip()
+    for raw in (
+        OWNER_ID,
+        os.environ.get("BOT_OWNER_ID", ""),
+        os.environ.get("DRAFT_ADMIN_IDS", ""),
+        os.environ.get("FANTASY_ADMIN_IDS", ""),
+    )
+    for item in raw.split(",")
     if item.strip()
 }
 PORT = int(os.environ.get("PORT", "8787"))
