@@ -1347,7 +1347,9 @@ app.router.add_options("/api/img", proxy_image)
 # --- 2. FRONTEND & STATIC ROUTES ---
 # Serve main entry points to output the HTML frame
 app.router.add_get("/", serve_index)
-app.router.add_get("/warroom/war-room", serve_index)
+app.router.add_get("/war-room", serve_index)          # Catches the path after Discord strips "/warroom"
+app.router.add_get("/warroom/war-room", serve_index)  # Fallback for local browser testing
+app.router.add_get("/draft", serve_index)
 
 # Serve static frontend files (JS, CSS, assets folder)
 app.router.add_static('/', path='.', name='static', show_index=False)
