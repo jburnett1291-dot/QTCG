@@ -162,6 +162,10 @@ _DRAFT_ADMIN_IDS = {
     for item in raw.split(",")
     if item.strip()
 }
+_ADMIN_PIN = os.environ.get("ADMIN_PIN", "")
+if _ADMIN_PIN:
+    _DRAFT_ADMIN_IDS.add("pin-admin")
+_PIN_FAILURES = {}
 PORT = int(os.environ.get("PORT", "8787"))
 
 # odds MUST match the bot's TVT_ODDS / TVT_PACK_SIZE
@@ -806,6 +810,36 @@ async def login(request):
         "avatar": user.get("avatar"), "user_id": uid, "session": sess}))
 
 
+async def draft_pin(request):
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    if not _ADMIN_PIN:
+        return _cors(web.json_response(
+            {"error": "PIN access is not configured"}, status=503))
+    now = time.time()
+    peer = request.remote or "unknown"
+    failure = _PIN_FAILURES.get(peer, {"count": 0, "reset_at": now + 900})
+    if failure["reset_at"] > now and failure["count"] >= 5:
+        return _cors(web.json_response(
+            {"error": "Too many attempts. Try again in 15 minutes."}, status=429))
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    supplied = str(body.get("pin", ""))
+    if not _hmac.compare_digest(supplied, _ADMIN_PIN):
+        if failure["reset_at"] <= now:
+            failure = {"count": 0, "reset_at": now + 900}
+        failure["count"] += 1
+        _PIN_FAILURES[peer] = failure
+        return _cors(web.json_response({"error": "Incorrect PIN"}, status=401))
+    _PIN_FAILURES.pop(peer, None)
+    return _cors(web.json_response({
+        "ok": True,
+        "session": _make_session("pin-admin", "PIN Director", None),
+    }))
+
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  STARTER PACKS — onboarding: pick a strategy, get curated players + 500 coins
@@ -1424,6 +1458,8 @@ async def proxy_image(request):
 
 app = web.Application()
 app.router.add_post("/api/login", login)
+app.router.add_post("/api/draft/pin", draft_pin)
+app.router.add_options("/api/draft/pin", draft_pin)
 app.router.add_post("/api/starter", claim_starter)
 app.router.add_options("/api/starter", claim_starter)
 app.router.add_get("/api/starter_status", starter_status)
