@@ -1337,6 +1337,8 @@ app.router.add_options("/api/draft/players", draft_players)
 app.router.add_get("/", health)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
+app.router.add_static('/', path='.', name='static', show_index=False)
+app.router.add_static('/warroom/', path='.', name='warroom_static', show_index=False)
 
 
 if __name__ == "__main__":
