@@ -1,9 +1,5 @@
 (function () {
-  const API_ORIGIN =
-    location.hostname === "localhost" || location.hostname.endsWith(".replit.dev")
-      ? ""
-      : "https://qspn-draft-war-room.replit.app";
-  const apiFetch = (path, options) => fetch(`${API_ORIGIN}${path}`, options);
+  const apiFetch = (path, options) => fetch(path, options);
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
   if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");
   const session = () =>
