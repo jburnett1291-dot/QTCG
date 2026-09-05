@@ -1,0 +1,35 @@
+{
+  "submissions": [
+    {
+      "userId": "DISCORD_USER_ID",
+      "teamId": "TEAM_ID_FROM_DRAFT_JSON",
+      "coachName": "Coach Name",
+      "needs": [
+        {
+          "position": "QB",
+          "priority": 1,
+          "note": "Starter needed"
+        }
+      ],
+      "playerNotes": [
+        {
+          "prospectId": "PROSPECT_ID_FROM_DRAFT_JSON",
+          "grade": "A",
+          "note": "Best fit for our offense"
+        }
+      ],
+      "mockPicks": [
+        {
+          "overall": 1,
+          "prospectId": "PROSPECT_ID_FROM_DRAFT_JSON",
+          "note": "Primary target"
+        }
+      ],
+      "watchlist": [
+        "PROSPECT_ID_FROM_DRAFT_JSON"
+      ],
+      "avoidList": [],
+      "tradeNotes": "Private trade and contingency notes"
+    }
+  ]
+}
