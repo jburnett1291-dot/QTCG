@@ -2,7 +2,7 @@
   "config": {
     "season": 0,
     "draftName": "QCL Season 0 Draft",
-    "warRoomOpen": false,
+    "warRoomOpen": true,
     "rounds": 6,
     "status": "complete",
     "clockSeconds": 90,
@@ -59,6 +59,6 @@
     "team-d"
   ],
   "picks": [],
-  "publishedAt": "2026-09-05 14:04",
+  "publishedAt": "2026-09-05 14:12",
   "source": "QCL2K Discord bot"
 }
