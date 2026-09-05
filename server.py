@@ -23,6 +23,7 @@ import json
 import time
 import base64
 import random
+from pathlib import Path
 import aiohttp
 from aiohttp import web
 
@@ -30,6 +31,7 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
+BASE_DIR = Path(__file__).resolve().parent
 
 import re as _re
 
@@ -1313,7 +1315,23 @@ async def proxy_image(request):
 # --- Serve the frontend index.html ---
 async def serve_index(request):
     """Serve the War Room / QTCG single-page application frontend."""
-    return web.FileResponse('./index.html')
+    return web.FileResponse(BASE_DIR / 'index.html')
+
+
+async def serve_frontend_bundle(request):
+    """Make the uploaded production bundle use this Railway service's API."""
+    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
+    if not bundle.is_file():
+        raise web.HTTPNotFound(text="Frontend bundle not found")
+    source = bundle.read_text(encoding="utf-8").replace(
+        "https://diligent-eagerness-test.up.railway.app",
+        "",
+    )
+    return web.Response(
+        text=source,
+        content_type="text/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 app = web.Application()
@@ -1348,17 +1366,15 @@ app.router.add_options("/api/img", proxy_image)
 # Serve main entry points to output the HTML frame
 app.router.add_get("/", serve_index)
 app.router.add_get("/war-room", serve_index)
+app.router.add_get("/warroom", serve_index)
 app.router.add_get("/warroom/war-room", serve_index)
 app.router.add_get("/draft", serve_index)
+app.router.add_get("/coach", serve_index)
+app.router.add_get("/director", serve_index)
+app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
 
-app.router.add_static('/', path='.', name='static', show_index=False)
-app.router.add_static('/warroom/', path='.', name='warroom_static', show_index=False)
-
-
-if __name__ == "__main__":
-    print(f"[qcl-pull-server] starting on :{PORT}, repo={GH_REPO}")
-    web.run_app(app, host="0.0.0.0", port=PORT)
-
+app.router.add_static('/', path=str(BASE_DIR), name='static', show_index=False)
+app.router.add_static('/warroom/', path=str(BASE_DIR), name='warroom_static', show_index=False)
 
 
 if __name__ == "__main__":
