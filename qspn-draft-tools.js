@@ -1,7 +1,10 @@
 (function () {
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
   if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");
-  const session = () => localStorage.getItem("qcl-session") || "";
+  const session = () =>
+    sessionStorage.getItem("qspn-admin-session") ||
+    localStorage.getItem("qcl-session") ||
+    "";
   let lastPromoId = null;
   let clearTimer = null;
   let latestState = null;
@@ -58,6 +61,56 @@
     updateDirectorTab();
   }
 
+  async function requestPinAccess() {
+    const existing = document.querySelector(".qspn-pin-dialog");
+    if (existing) return false;
+    return await new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "qspn-pin-dialog";
+      overlay.innerHTML = `
+        <form class="qspn-pin-card">
+          <div class="qspn-pin-eyebrow">RESTRICTED CONTROL</div>
+          <h2>Enter access PIN</h2>
+          <p>Unlock Director Mode and Test Mode for this session.</p>
+          <input type="password" name="pin" autocomplete="one-time-code" required autofocus>
+          <div class="qspn-pin-error" role="alert"></div>
+          <div class="qspn-pin-actions">
+            <button type="button" data-cancel>Cancel</button>
+            <button type="submit">Unlock</button>
+          </div>
+        </form>`;
+      const finish = (value) => {
+        overlay.remove();
+        resolve(value);
+      };
+      overlay.querySelector("[data-cancel]").onclick = () => finish(false);
+      overlay.querySelector("form").onsubmit = async (event) => {
+        event.preventDefault();
+        const input = overlay.querySelector('input[name="pin"]');
+        const error = overlay.querySelector(".qspn-pin-error");
+        error.textContent = "";
+        try {
+          const response = await fetch("/api/draft/pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin: input.value }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "PIN unlock failed");
+          sessionStorage.setItem("qspn-admin-session", result.session);
+          await pollDraftState();
+          finish(true);
+        } catch (requestError) {
+          error.textContent = requestError.message;
+          input.select();
+        }
+      };
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector("input")?.focus(), 0);
+    });
+  }
+  window.qspnRequestPinAccess = requestPinAccess;
+
   function mountAdminTools() {
     if (!isDraft || latestState?.access !== "admin") return;
     if (document.querySelector(".qspn-draft-tools")) return;
@@ -90,7 +143,9 @@
     if (!warRoom) return;
     const tab = button("DIRECTOR MODE", () => {
       if (latestState?.access !== "admin") {
-        alert("Director Mode is locked. Sign in as the bot owner or an approved draft admin.");
+        requestPinAccess().then((unlocked) => {
+          if (unlocked) setDirectorMode(!latestState?.director_mode);
+        });
         return;
       }
       setDirectorMode(!latestState?.director_mode).catch((error) => alert(error.message));
