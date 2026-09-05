@@ -1,3 +1,15 @@
+.qspn-brand-current {
+  border-color: #f4d97a !important;
+  color: #070b16 !important;
+  background: linear-gradient(135deg, #d6a928, #8c6411) !important;
+  box-shadow: 0 0 18px rgba(214, 169, 40, .32) !important;
+}
+.qspn-brand-primary {
+  border-color: #f4d97a !important;
+  color: #070b16 !important;
+  background: linear-gradient(135deg, #d6a928, #8c6411) !important;
+  box-shadow: 0 12px 30px rgba(214, 169, 40, .18) !important;
+}
 .qspn-pin-dialog {
   position: fixed; inset: 0; z-index: 12000; display: grid; place-items: center;
   padding: 20px; background: rgba(2, 6, 18, .86); backdrop-filter: blur(12px);

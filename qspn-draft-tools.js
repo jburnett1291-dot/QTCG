@@ -1,6 +1,6 @@
 (function () {
   document.addEventListener("click", (event) => {
-    const link = event.target.closest?.("a");
+    const link = event.target.closest?.("button, a");
     if (link && link.textContent.trim().toUpperCase() === "WAR ROOM") {
       event.preventDefault();
       window.location.href = "/warroom/war-room";
@@ -8,6 +8,15 @@
   }, true);
 
   const apiFetch = (path, options) => fetch(path, options);
+  function brandShell() {
+    for (const node of document.querySelectorAll("button, a")) {
+      const label = node.textContent.trim().toUpperCase();
+      node.classList.toggle("qspn-brand-current", label === "QTCG");
+      node.classList.toggle("qspn-brand-primary", label === "OPEN PACKS");
+    }
+  }
+  brandShell();
+  setInterval(brandShell, 750);
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
   if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");
   const session = () =>
