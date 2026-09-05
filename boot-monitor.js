@@ -98,25 +98,25 @@
   if (!document.querySelector('link[href*="qspn-draft-tools.css"]')) {
     var style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = './qspn-draft-tools.css?v=discord-api-1';
+    style.href = './qspn-draft-tools.css?v=discord-proxy-1';
     style.dataset.qspnDraftTools = 'true';
     document.head.appendChild(style);
   }
   if (!document.querySelector('script[src*="qspn-draft-tools.js"]')) {
     var script = document.createElement('script');
-    script.src = './qspn-draft-tools.js?v=discord-api-1';
+    script.src = './qspn-draft-tools.js?v=discord-proxy-1';
     script.dataset.qspnDraftTools = 'true';
     document.body.appendChild(script);
   }
   if (!document.querySelector('link[href*="qspn-test-mode.css"]')) {
     var testStyle = document.createElement('link');
     testStyle.rel = 'stylesheet';
-    testStyle.href = './qspn-test-mode.css?v=discord-api-1';
+    testStyle.href = './qspn-test-mode.css?v=discord-proxy-1';
     document.head.appendChild(testStyle);
   }
   if (!document.querySelector('script[src*="qspn-test-mode.js"]')) {
     var testScript = document.createElement('script');
-    testScript.src = './qspn-test-mode.js?v=discord-api-1';
+    testScript.src = './qspn-test-mode.js?v=discord-proxy-1';
     document.body.appendChild(testScript);
   }
 })();
