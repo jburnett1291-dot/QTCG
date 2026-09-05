@@ -1214,7 +1214,15 @@ async def proxy_image(request):
 
 async def serve_index(request):
     """Serve the compiled QTCG frontend."""
-    return web.FileResponse(BASE_DIR / "index.html")
+    return web.FileResponse(
+        BASE_DIR / "index.html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def redirect_to_draft(request):
+    """Compatibility route for older QTCG links."""
+    raise web.HTTPFound("/draft")
 
 
 async def serve_frontend_bundle(request):
@@ -1263,12 +1271,12 @@ app.router.add_options("/api/img", proxy_image)
 
 # Frontend routes must be registered before the static catch-all.
 app.router.add_get("/", serve_index)
-app.router.add_get("/war-room", serve_index)
-app.router.add_get("/warroom", serve_index)
-app.router.add_get("/warroom/war-room", serve_index)
+app.router.add_get("/war-room", redirect_to_draft)
+app.router.add_get("/warroom", redirect_to_draft)
+app.router.add_get("/warroom/war-room", redirect_to_draft)
 app.router.add_get("/draft", serve_index)
-app.router.add_get("/coach", serve_index)
-app.router.add_get("/director", serve_index)
+app.router.add_get("/coach", redirect_to_draft)
+app.router.add_get("/director", redirect_to_draft)
 app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
 app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
 
