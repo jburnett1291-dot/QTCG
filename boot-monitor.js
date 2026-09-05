@@ -119,4 +119,15 @@
     testScript.src = './qspn-test-mode.js?v=discord-proxy-1';
     document.body.appendChild(testScript);
   }
+  if (!document.querySelector('link[href*="qspn-broadcast-control.css"]')) {
+    var broadcastStyle = document.createElement('link');
+    broadcastStyle.rel = 'stylesheet';
+    broadcastStyle.href = './qspn-broadcast-control.css?v=broadcast-control-1';
+    document.head.appendChild(broadcastStyle);
+  }
+  if (!document.querySelector('script[src*="qspn-broadcast-control.js"]')) {
+    var broadcastScript = document.createElement('script');
+    broadcastScript.src = './qspn-broadcast-control.js?v=broadcast-control-1';
+    document.body.appendChild(broadcastScript);
+  }
 })();
