@@ -1347,14 +1347,18 @@ app.router.add_options("/api/img", proxy_image)
 # --- 2. FRONTEND & STATIC ROUTES ---
 # Serve main entry points to output the HTML frame
 app.router.add_get("/", serve_index)
-app.router.add_get("/war-room", serve_index)          # Catches the path after Discord strips "/warroom"
-app.router.add_get("/warroom/war-room", serve_index)  # Fallback for local browser testing
+app.router.add_get("/war-room", serve_index)
+app.router.add_get("/warroom/war-room", serve_index)
 app.router.add_get("/draft", serve_index)
+
 app.router.add_static('/', path='.', name='static', show_index=False)
 app.router.add_static('/warroom/', path='.', name='warroom_static', show_index=False)
 
-# Serve static frontend files (JS, CSS, assets folder)
-app.router.add_static('/', path='.', name='static', show_index=False)
+
+if __name__ == "__main__":
+    print(f"[qcl-pull-server] starting on :{PORT}, repo={GH_REPO}")
+    web.run_app(app, host="0.0.0.0", port=PORT)
+
 
 
 if __name__ == "__main__":
