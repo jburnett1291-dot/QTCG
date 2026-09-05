@@ -1,4 +1,9 @@
 (function () {
+  const API_ORIGIN =
+    location.hostname === "localhost" || location.hostname.endsWith(".replit.dev")
+      ? ""
+      : "https://qspn-draft-war-room.replit.app";
+  const apiFetch = (path, options) => fetch(`${API_ORIGIN}${path}`, options);
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
   if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");
   const session = () =>
@@ -20,7 +25,7 @@
   }
 
   async function exportPlayers() {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/draft/players?session=${encodeURIComponent(session())}`,
     );
     if (!response.ok) throw new Error((await response.json()).error || "Export failed");
@@ -34,7 +39,7 @@
 
   async function importPlayers(file) {
     const payload = JSON.parse(await file.text());
-    const response = await fetch("/api/draft/players", {
+    const response = await apiFetch("/api/draft/players", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, session: session() }),
@@ -46,7 +51,7 @@
   }
 
   async function setDirectorMode(enabled) {
-    const response = await fetch("/api/draft/action", {
+    const response = await apiFetch("/api/draft/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -90,7 +95,7 @@
         const error = overlay.querySelector(".qspn-pin-error");
         error.textContent = "";
         try {
-          const response = await fetch("/api/draft/pin", {
+          const response = await apiFetch("/api/draft/pin", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ pin: input.value }),
@@ -177,7 +182,7 @@
   async function pollDraftState() {
     if (!session()) return;
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/draft/state?session=${encodeURIComponent(session())}`,
         { cache: "no-store" },
       );
