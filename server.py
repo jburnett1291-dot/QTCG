@@ -1350,6 +1350,8 @@ app.router.add_get("/", serve_index)
 app.router.add_get("/war-room", serve_index)          # Catches the path after Discord strips "/warroom"
 app.router.add_get("/warroom/war-room", serve_index)  # Fallback for local browser testing
 app.router.add_get("/draft", serve_index)
+app.router.add_static('/', path='.', name='static', show_index=False)
+app.router.add_static('/warroom/', path='.', name='warroom_static', show_index=False)
 
 # Serve static frontend files (JS, CSS, assets folder)
 app.router.add_static('/', path='.', name='static', show_index=False)
