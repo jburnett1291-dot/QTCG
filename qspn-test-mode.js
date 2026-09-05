@@ -1,4 +1,9 @@
 (function () {
+  const API_ORIGIN =
+    location.hostname === "localhost" || location.hostname.endsWith(".replit.dev")
+      ? ""
+      : "https://qspn-draft-war-room.replit.app";
+  const apiFetch = (path, options) => fetch(`${API_ORIGIN}${path}`, options);
   const session = () =>
     sessionStorage.getItem("qspn-admin-session") ||
     localStorage.getItem("qcl-session") ||
@@ -95,7 +100,7 @@
   }
 
   async function api(path, body) {
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, session: session() }),
@@ -243,7 +248,7 @@
     mountTab();
     if (!session()) return;
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/draft/state?session=${encodeURIComponent(session())}`,
         { cache: "no-store" },
       );
