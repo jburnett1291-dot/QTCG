@@ -44,68 +44,37 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root {
-  --background: 210 20% 98%;
-  --foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 348 83% 47%;
-  
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
-  
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
-  
-  --primary: 348 83% 47%;
-  --primary-foreground: 0 0% 100%;
-  
-  --secondary: 222 47% 11%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  
-  --accent: 45 93% 47%;
-  --accent-foreground: 222 47% 11%;
-  
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-
-  --radius: 0.25rem;
-}
-
-.dark {
-  --background: 222 47% 11%;
+:root, .dark {
+  --background: 222 47% 7%; /* Dark Graphite */
   --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 348 83% 47%;
+  --border: 222 47% 15%;
+  --input: 222 47% 15%;
+  --ring: 17 90% 55%;
   
-  --card: 222 47% 11%;
+  --card: 222 47% 10%;
   --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
+  --card-border: 222 47% 15%;
   
-  --popover: 222 47% 11%;
+  --popover: 222 47% 10%;
   --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
+  --popover-border: 222 47% 15%;
   
-  --primary: 348 83% 47%;
+  --primary: 17 90% 55%; /* Signal Orange */
   --primary-foreground: 0 0% 100%;
   
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 173 80% 40%; /* Teal */
+  --secondary-foreground: 0 0% 100%;
   
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 222 47% 13%;
+  --muted-foreground: 215 20% 65%;
   
-  --accent: 45 93% 47%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 173 80% 40%;
+  --accent-foreground: 210 40% 98%;
   
-  --destructive: 0 62.8% 30.6%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 210 40% 98%;
+
+  --radius: 0.5rem;
 }
 
 @layer base {
