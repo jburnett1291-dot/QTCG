@@ -1,5 +1,8 @@
 (function () {
-  const session = () => localStorage.getItem("qcl-session") || "";
+  const session = () =>
+    sessionStorage.getItem("qspn-admin-session") ||
+    localStorage.getItem("qcl-session") ||
+    "";
   let state = null;
   let running = false;
   let timer = null;
@@ -61,7 +64,16 @@
     if (!anchor?.parentElement) return;
     const tab = button("TEST MODE", "qspn-test-tab is-locked", () => {
       if (state?.access !== "admin") {
-        alert("Test Mode is locked. Sign in as the bot owner or an approved draft admin.");
+        if (window.qspnRequestPinAccess) {
+          window.qspnRequestPinAccess().then((unlocked) => {
+            if (unlocked) {
+              poll().then(() => {
+                mountPanel();
+                document.querySelector(".qspn-test-panel")?.classList.add("is-open");
+              });
+            }
+          });
+        }
         return;
       }
       mountPanel();
