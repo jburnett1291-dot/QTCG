@@ -1,0 +1,23 @@
+QCL PLAYER REGISTRATION
+==============================
+Discord Id: 1337614287920959609
+Guild Id: 1523019786877927595
+Discord Username: qwiktv
+Gamertag: TheQwiktator
+Discord Name: 𝘚𝘵𝘦𝘱𝘩𝘦𝘯 𝘈. 𝘘𝘸𝘪𝘬
+Build: 2 Way
+Position: Hash
+Availability: weekdays
+Availability Label: Weekdays
+Socials:   x_twitter: QwikTelevision
+  xbox_psn: QwikTelevision
+  tiktok: QwikTV
+  youtube: Qwik
+Registered At: 2026-09-03 11:22
+Updated At: 2026-09-04 08:42
+Drafted By: Not provided
+Combine Games: None
+Data Folder: draft_players\1337614287920959609
+Photo Path: draft_players\1337614287920959609\player_photo.png
+Photo Filename: Logo_2.png
+Eligible: True
