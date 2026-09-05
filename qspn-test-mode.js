@@ -1,9 +1,5 @@
 (function () {
-  const API_ORIGIN =
-    location.hostname === "localhost" || location.hostname.endsWith(".replit.dev")
-      ? ""
-      : "https://qspn-draft-war-room.replit.app";
-  const apiFetch = (path, options) => fetch(`${API_ORIGIN}${path}`, options);
+  const apiFetch = (path, options) => fetch(path, options);
   const session = () =>
     sessionStorage.getItem("qspn-admin-session") ||
     localStorage.getItem("qcl-session") ||
