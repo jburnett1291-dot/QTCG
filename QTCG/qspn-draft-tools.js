@@ -1,11 +1,15 @@
 (function () {
+  const apiFetch = (path, options) => fetch(path, options);
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
-  if (!isDraft) return;
-
-  const session = () => localStorage.getItem("qcl-session") || "";
-  const director = new URLSearchParams(location.search).get("director") === "1";
+  if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");
+  const session = () =>
+    sessionStorage.getItem("qspn-admin-session") ||
+    localStorage.getItem("qcl-session") ||
+    "";
   let lastPromoId = null;
   let clearTimer = null;
+  let latestState = null;
+  let lastPickCount = null;
 
   function button(label, onClick) {
     const element = document.createElement("button");
@@ -17,7 +21,7 @@
   }
 
   async function exportPlayers() {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/draft/players?session=${encodeURIComponent(session())}`,
     );
     if (!response.ok) throw new Error((await response.json()).error || "Export failed");
@@ -31,7 +35,7 @@
 
   async function importPlayers(file) {
     const payload = JSON.parse(await file.text());
-    const response = await fetch("/api/draft/players", {
+    const response = await apiFetch("/api/draft/players", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, session: session() }),
@@ -42,14 +46,78 @@
     location.reload();
   }
 
-  function mountTools() {
+  async function setDirectorMode(enabled) {
+    const response = await apiFetch("/api/draft/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set_director_mode",
+        enabled,
+        session: session(),
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Director Mode update failed");
+    latestState = result.draft;
+    updateDirectorTab();
+  }
+
+  async function requestPinAccess() {
+    const existing = document.querySelector(".qspn-pin-dialog");
+    if (existing) return false;
+    return await new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "qspn-pin-dialog";
+      overlay.innerHTML = `
+        <form class="qspn-pin-card">
+          <div class="qspn-pin-eyebrow">RESTRICTED CONTROL</div>
+          <h2>Enter access PIN</h2>
+          <p>Unlock Director Mode and Test Mode for this session.</p>
+          <input type="password" name="pin" autocomplete="one-time-code" required autofocus>
+          <div class="qspn-pin-error" role="alert"></div>
+          <div class="qspn-pin-actions">
+            <button type="button" data-cancel>Cancel</button>
+            <button type="submit">Unlock</button>
+          </div>
+        </form>`;
+      const finish = (value) => {
+        overlay.remove();
+        resolve(value);
+      };
+      overlay.querySelector("[data-cancel]").onclick = () => finish(false);
+      overlay.querySelector("form").onsubmit = async (event) => {
+        event.preventDefault();
+        const input = overlay.querySelector('input[name="pin"]');
+        const error = overlay.querySelector(".qspn-pin-error");
+        error.textContent = "";
+        try {
+          const response = await apiFetch("/api/draft/pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin: input.value }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "PIN unlock failed");
+          sessionStorage.setItem("qspn-admin-session", result.session);
+          await pollDraftState();
+          finish(true);
+        } catch (requestError) {
+          error.textContent = requestError.message;
+          input.select();
+        }
+      };
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector("input")?.focus(), 0);
+    });
+  }
+  window.qspnRequestPinAccess = requestPinAccess;
+
+  function mountAdminTools() {
+    if (!isDraft || latestState?.access !== "admin") return;
     if (document.querySelector(".qspn-draft-tools")) return;
     const tools = document.createElement("aside");
     tools.className = "qspn-draft-tools";
     tools.append(
-      button("DIRECTOR MODE", () => {
-        window.open(`${location.pathname}?director=1`, "qspn-director");
-      }),
       button("EXPORT PLAYERS JSON", () => {
         exportPlayers().catch((error) => alert(error.message));
       }),
@@ -68,15 +136,80 @@
     document.body.appendChild(tools);
   }
 
-  async function pollDirector() {
+  function mountDirectorTab() {
+    if (document.querySelector(".qspn-director-tab")) return;
+    const warRoom = [...document.querySelectorAll("button, a")].find(
+      (element) => element.textContent.trim().toUpperCase() === "WAR ROOM",
+    );
+    if (!warRoom) return;
+    const tab = button("DEV MODE", () => {
+      if (latestState?.access !== "admin") {
+        requestPinAccess().then((unlocked) => {
+          if (unlocked) setDirectorMode(!latestState?.director_mode);
+        });
+        return;
+      }
+      setDirectorMode(!latestState?.director_mode).catch((error) => alert(error.message));
+    });
+    tab.className = "qspn-director-tab";
+    warRoom.parentElement?.appendChild(tab);
+    updateDirectorTab();
+  }
+
+  function updateDirectorTab() {
+    const tab = document.querySelector(".qspn-director-tab");
+    if (!tab) return;
+    const authorized = latestState?.access === "admin";
+    const enabled = Boolean(
+      latestState?.director_mode ?? latestState?.director?.enabled,
+    );
+    tab.classList.toggle("is-active", authorized && enabled);
+    tab.classList.toggle("is-locked", !authorized);
+    tab.textContent = authorized && enabled ? "DEV: LIVE" : "DEV MODE";
+    tab.setAttribute("aria-pressed", String(authorized && enabled));
+    tab.setAttribute("aria-disabled", String(!authorized));
+    tab.title = !authorized
+      ? "Locked — bot owner or approved draft admin access required."
+      : enabled
+        ? "Director Mode is live for every Activity viewer. Click to disable."
+        : "Enable broadcast takeovers for every Activity viewer.";
+  }
+
+  async function pollDraftState() {
     if (!session()) return;
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/draft/state?session=${encodeURIComponent(session())}`,
         { cache: "no-store" },
       );
       if (!response.ok) return;
       const state = await response.json();
+      latestState = state;
+      mountDirectorTab();
+      mountAdminTools();
+      updateDirectorTab();
+
+      if (!(state.director_mode ?? state.director?.enabled)) {
+        document.querySelector(".qspn-director-takeover")?.remove();
+        return;
+      }
+      const nodeDirectorEnabled = state.director?.enabled && state.director?.autoShow;
+      if (lastPickCount === null) lastPickCount = state.picks?.length || 0;
+      if (nodeDirectorEnabled && (state.picks?.length || 0) > lastPickCount) {
+        const pick = state.picks[state.picks.length - 1];
+        const player = state.prospects?.find((item) => item.id === pick.prospectId);
+        const team = state.teams?.find((item) => item.id === pick.teamId);
+        if (player && team) {
+          showTakeover({
+            event_id: pick.id,
+            pick: pick.overall,
+            team: `${team.city} ${team.name}`,
+            player: player.name,
+          }, player);
+        }
+      }
+      lastPickCount = state.picks?.length || 0;
+
       const promo = state.promo;
       if (!promo || promo.event_id === lastPromoId) return;
       lastPromoId = promo.event_id;
@@ -118,10 +251,8 @@
     clearTimer = setTimeout(() => overlay.remove(), 12000);
   }
 
-  mountTools();
-  if (director) {
-    document.documentElement.classList.add("qspn-director-mode");
-    pollDirector();
-    setInterval(pollDirector, 1500);
-  }
+  mountDirectorTab();
+  setInterval(mountDirectorTab, 500);
+  pollDraftState();
+  setInterval(pollDraftState, 1500);
 })();

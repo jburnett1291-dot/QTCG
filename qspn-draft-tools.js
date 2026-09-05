@@ -142,7 +142,7 @@
       (element) => element.textContent.trim().toUpperCase() === "WAR ROOM",
     );
     if (!warRoom) return;
-    const tab = button("DIRECTOR MODE", () => {
+    const tab = button("DEV MODE", () => {
       if (latestState?.access !== "admin") {
         requestPinAccess().then((unlocked) => {
           if (unlocked) setDirectorMode(!latestState?.director_mode);
@@ -165,7 +165,7 @@
     );
     tab.classList.toggle("is-active", authorized && enabled);
     tab.classList.toggle("is-locked", !authorized);
-    tab.textContent = authorized && enabled ? "DIRECTOR: LIVE" : "DIRECTOR MODE";
+    tab.textContent = authorized && enabled ? "DEV: LIVE" : "DEV MODE";
     tab.setAttribute("aria-pressed", String(authorized && enabled));
     tab.setAttribute("aria-disabled", String(!authorized));
     tab.title = !authorized

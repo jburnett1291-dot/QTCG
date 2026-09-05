@@ -1,3 +1,29 @@
+.qspn-pin-dialog {
+  position: fixed; inset: 0; z-index: 12000; display: grid; place-items: center;
+  padding: 20px; background: rgba(2, 6, 18, .86); backdrop-filter: blur(12px);
+}
+.qspn-pin-card {
+  width: min(420px, 100%); padding: 26px; box-sizing: border-box;
+  border: 1px solid #315986; border-radius: 16px;
+  color: #f8fafc; background: #091426; box-shadow: 0 28px 90px #000b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.qspn-pin-eyebrow { color: #f4c95d; font-size: 10px; font-weight: 900; letter-spacing: .18em; }
+.qspn-pin-card h2 { margin: 8px 0 4px; font-size: 26px; }
+.qspn-pin-card p { margin: 0 0 18px; color: #8ea5c1; font-size: 13px; }
+.qspn-pin-card input {
+  width: 100%; box-sizing: border-box; padding: 13px 14px;
+  border: 1px solid #315986; border-radius: 9px; outline: none;
+  color: #fff; background: #050b16; font-size: 18px; letter-spacing: .08em;
+}
+.qspn-pin-card input:focus { border-color: #f4c95d; box-shadow: 0 0 0 3px rgba(244,201,93,.15); }
+.qspn-pin-error { min-height: 18px; margin-top: 8px; color: #fb7185; font-size: 12px; }
+.qspn-pin-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 8px; }
+.qspn-pin-actions button {
+  border: 1px solid #315986; border-radius: 9px; padding: 10px 16px;
+  color: #dbeafe; background: #10213a; font-weight: 800; cursor: pointer;
+}
+.qspn-pin-actions button[type="submit"] { border-color: #f4c95d; color: #07101f; background: #f4c95d; }
 .qspn-draft-tools {
   position: fixed;
   right: 18px;
@@ -24,15 +50,42 @@
   cursor: pointer;
 }
 
-.qspn-tool-button:first-child {
-  border-color: #f4c95d;
-  color: #f4c95d;
-}
-
 .qspn-tool-button:hover { background: #1b365c; }
 
-.qspn-director-mode .qspn-draft-tools { opacity: .18; }
-.qspn-director-mode .qspn-draft-tools:hover { opacity: 1; }
+.qspn-director-tab {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 13px;
+  background: transparent;
+  color: #9db2ce;
+  font: 800 11px/1 Inter, sans-serif;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.qspn-director-tab:hover {
+  color: #fff;
+  background: #132743;
+}
+
+.qspn-director-tab.is-active {
+  border-color: #f4c95d;
+  color: #f4c95d;
+  background: rgba(244, 201, 93, .12);
+  box-shadow: 0 0 18px rgba(244, 201, 93, .2);
+}
+
+.qspn-director-tab.is-locked {
+  opacity: .58;
+  color: #7f91aa;
+  cursor: not-allowed;
+}
+
+.qspn-director-tab.is-locked::after {
+  content: " · LOCKED";
+  color: #66758b;
+  font-size: 9px;
+}
 
 .qspn-director-takeover {
   position: fixed;

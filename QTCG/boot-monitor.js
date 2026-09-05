@@ -92,3 +92,42 @@
     }
   }, 12000);
 })();
+
+/* Load the owner/admin broadcast controls outside the compiled QTCG bundle. */
+(function loadQspnDraftTools() {
+  if (!document.querySelector('link[href*="qspn-draft-tools.css"]')) {
+    var style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = './qspn-draft-tools.css?v=discord-proxy-1';
+    style.dataset.qspnDraftTools = 'true';
+    document.head.appendChild(style);
+  }
+  if (!document.querySelector('script[src*="qspn-draft-tools.js"]')) {
+    var script = document.createElement('script');
+    script.src = './qspn-draft-tools.js?v=discord-proxy-1';
+    script.dataset.qspnDraftTools = 'true';
+    document.body.appendChild(script);
+  }
+  if (!document.querySelector('link[href*="qspn-test-mode.css"]')) {
+    var testStyle = document.createElement('link');
+    testStyle.rel = 'stylesheet';
+    testStyle.href = './qspn-test-mode.css?v=discord-proxy-1';
+    document.head.appendChild(testStyle);
+  }
+  if (!document.querySelector('script[src*="qspn-test-mode.js"]')) {
+    var testScript = document.createElement('script');
+    testScript.src = './qspn-test-mode.js?v=discord-proxy-1';
+    document.body.appendChild(testScript);
+  }
+  if (!document.querySelector('link[href*="qspn-broadcast-control.css"]')) {
+    var broadcastStyle = document.createElement('link');
+    broadcastStyle.rel = 'stylesheet';
+    broadcastStyle.href = './qspn-broadcast-control.css?v=broadcast-control-1';
+    document.head.appendChild(broadcastStyle);
+  }
+  if (!document.querySelector('script[src*="qspn-broadcast-control.js"]')) {
+    var broadcastScript = document.createElement('script');
+    broadcastScript.src = './qspn-broadcast-control.js?v=broadcast-control-1';
+    document.body.appendChild(broadcastScript);
+  }
+})();
