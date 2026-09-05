@@ -1,4 +1,12 @@
 (function () {
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest?.("a");
+    if (link && link.textContent.trim().toUpperCase() === "WAR ROOM") {
+      event.preventDefault();
+      window.location.href = "/warroom/war-room";
+    }
+  }, true);
+
   const apiFetch = (path, options) => fetch(path, options);
   const isDraft = location.pathname.replace(/\/+$/, "").endsWith("/draft");
   if (isDraft) document.documentElement.classList.add("qspn-war-room-polish");

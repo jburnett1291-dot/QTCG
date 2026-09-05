@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import AccessScreen from '@/pages/access';
 import WarRoomLayout from '@/pages/war-room';
+import { TopNav } from '@/components/top-nav';
 import {
   Route,
   Switch,
@@ -46,13 +47,18 @@ function Router() {
   return (
     <RoutedErrorBoundary>
       <SessionManager />
-      <Switch>
-        <Route path="/" component={AccessScreen} />
-        <Route path="/war-room">{() => <WarRoomLayout />}</Route>
-        <Route path="/coach" component={() => <WarRoomLayout forceMode="coach" />} />
-        <Route path="/director" component={() => <WarRoomLayout forceMode="director" />} />
-        <Route component={NotFound} />
-      </Switch>
+      <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
+        <TopNav />
+        <div className="flex-1 overflow-hidden relative">
+          <Switch>
+            <Route path="/" component={AccessScreen} />
+            <Route path="/war-room">{() => <WarRoomLayout />}</Route>
+            <Route path="/coach" component={() => <WarRoomLayout forceMode="coach" />} />
+            <Route path="/director" component={() => <WarRoomLayout forceMode="director" />} />
+            <Route component={NotFound} />
+          </Switch>
+        </div>
+      </div>
     </RoutedErrorBoundary>
   );
 }
@@ -63,10 +69,14 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
+  const basePath = window.location.pathname.startsWith('/warroom')
+    ? '/warroom'
+    : (import.meta.env.BASE_URL?.replace(/\/$/, '') || '');
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
+        <WouterRouter base={basePath}>
           <Router />
         </WouterRouter>
         <Toaster />

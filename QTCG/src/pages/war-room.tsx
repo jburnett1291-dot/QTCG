@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useDraftState } from '@/lib/api';
 import Sidebar from '@/components/war-room/sidebar';
@@ -18,13 +18,17 @@ export default function WarRoomLayout({ forceMode }: { forceMode?: 'coach' | 'di
   const defaultMode = forceMode || (state?.access === 'admin' ? 'developer' : 'coach');
   const [mode, setMode] = useState<'coach' | 'director' | 'developer'>(defaultMode);
 
+  useEffect(() => {
+    if (forceMode) setMode(forceMode);
+  }, [forceMode]);
+
   if (isLoading) {
-    return <div className="h-[100dvh] w-screen bg-background text-foreground flex items-center justify-center font-mono animate-pulse uppercase tracking-widest">Loading War Room...</div>;
+    return <div className="h-full w-full bg-background text-foreground flex items-center justify-center font-mono animate-pulse uppercase tracking-widest">Loading War Room...</div>;
   }
 
   if (error || !state) {
     return (
-      <div className="h-[100dvh] w-screen bg-background text-foreground flex flex-col items-center justify-center font-mono gap-4">
+      <div className="h-full w-full bg-background text-foreground flex flex-col items-center justify-center font-mono gap-4">
         <div className="text-destructive">CONNECTION LOST</div>
         <Button onClick={() => setLocation('/')}>Return to Access</Button>
       </div>
@@ -32,7 +36,7 @@ export default function WarRoomLayout({ forceMode }: { forceMode?: 'coach' | 'di
   }
 
   return (
-    <div className="h-[100dvh] w-screen bg-background text-foreground flex flex-col md:flex-row overflow-hidden font-sans">
+    <div className="h-full w-full bg-background text-foreground flex flex-col md:flex-row overflow-hidden font-sans">
       <ResizablePanelGroup direction="horizontal" className="h-full w-full">
         {mode !== 'director' && (
           <>
@@ -42,7 +46,7 @@ export default function WarRoomLayout({ forceMode }: { forceMode?: 'coach' | 'di
             <ResizableHandle className="w-1 bg-border hover:bg-primary transition-colors cursor-col-resize hidden md:flex" />
           </>
         )}
-        <ResizablePanel defaultSize={mode !== 'director' ? 75 : 100} className="flex flex-col relative bg-[#0B0C10] h-full">
+        <ResizablePanel defaultSize={mode !== 'director' ? 75 : 100} className="flex flex-col relative bg-background h-full">
           <Header />
           
           {/* Main Area */}
@@ -53,28 +57,26 @@ export default function WarRoomLayout({ forceMode }: { forceMode?: 'coach' | 'di
           </div>
 
           {/* Mode Switcher */}
-          {!forceMode && (
+          {!forceMode && state?.access === 'admin' && (
             <div className="absolute top-3 right-4 z-50 flex items-center gap-1 bg-card/80 backdrop-blur-md border border-border p-1 rounded-lg shadow-lg">
-              <button 
+              <button
                 onClick={() => setMode('coach')}
-                className={cn("px-4 py-2 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-2 transition-colors", mode === 'coach' ? "bg-primary text-white" : "text-muted-foreground hover:text-white")}
+                className={cn("px-4 py-2 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-2 transition-colors", mode === 'coach' ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
               >
                 <Users size={14} /> Board
               </button>
-              <button 
+              <button
                 onClick={() => setMode('director')}
-                className={cn("px-4 py-2 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-2 transition-colors", mode === 'director' ? "bg-secondary text-white" : "text-muted-foreground hover:text-white")}
+                className={cn("px-4 py-2 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-2 transition-colors", mode === 'director' ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:text-foreground")}
               >
                 <MonitorPlay size={14} /> Director
               </button>
-              {state.access === 'admin' && (
-                <button 
-                  onClick={() => setMode('developer')}
-                  className={cn("px-4 py-2 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-2 transition-colors", mode === 'developer' ? "bg-muted-foreground/20 text-white" : "text-muted-foreground hover:text-white")}
-                >
-                  <Code2 size={14} /> Dev
-                </button>
-              )}
+              <button
+                onClick={() => setMode('developer')}
+                className={cn("px-4 py-2 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-2 transition-colors", mode === 'developer' ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                <Code2 size={14} /> Dev
+              </button>
             </div>
           )}
         </ResizablePanel>

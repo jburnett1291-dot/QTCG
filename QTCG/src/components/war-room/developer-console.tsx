@@ -38,13 +38,13 @@ export default function DeveloperConsole() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0B0C10] p-8 font-mono">
+    <div className="flex flex-col h-full bg-background p-8 font-mono">
       <div className="flex items-center justify-between mb-8 pb-6 border-b border-border">
         <h2 className="text-xl font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-3">
           <Server className="text-primary" size={20} /> Master Control
         </h2>
-        <div className="flex items-center gap-3 text-secondary text-sm font-bold animate-pulse">
-          <div className="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(0,210,185,0.8)]" />
+        <div className="flex items-center gap-3 text-primary text-sm font-bold animate-pulse">
+          <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(212,175,55,0.8)]" />
           SYSTEM NOMINAL
         </div>
       </div>

@@ -72,7 +72,7 @@ export default function DraftBoard() {
   const selectedProspect = playersList.find(p => p.discord_id === selectedId || p.gamertag === selectedId);
 
   return (
-    <div className="flex flex-col h-full bg-[#0B0C10] relative p-6 md:p-8">
+    <div className="flex flex-col h-full bg-background relative p-6 md:p-8">
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-xl md:text-2xl font-bold uppercase tracking-widest text-foreground font-mono">Available Players</h2>
         <div className="relative w-64 md:w-80">
@@ -97,7 +97,7 @@ export default function DraftBoard() {
                   onClick={() => setSelectedId(pid)}
                   className={`bg-card rounded-lg border-2 p-5 cursor-pointer transition-all duration-200 hover:-translate-y-1 relative group
                     ${selectedId === pid 
-                      ? 'border-primary shadow-[0_10px_30px_rgba(255,94,44,0.15)] bg-card/90' 
+                      ? 'border-primary shadow-[0_10px_30px_rgba(212,175,55,0.15)] bg-card/90'
                       : 'border-border hover:border-border/80 hover:shadow-lg'}
                   `}
                 >
@@ -139,7 +139,7 @@ export default function DraftBoard() {
       {selectedId && selectedProspect && (
         <div className="absolute bottom-8 left-8 right-8 bg-card/95 backdrop-blur-xl border border-primary/50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-5 flex items-center justify-between animate-in slide-in-from-bottom-8">
           <div className="flex items-center gap-6">
-            <div className="w-14 h-14 bg-primary/20 rounded-full flex items-center justify-center text-primary shadow-[0_0_15px_rgba(255,94,44,0.3)]">
+            <div className="w-14 h-14 bg-primary/20 rounded-full flex items-center justify-center text-primary shadow-[0_0_15px_rgba(212,175,55,0.3)]">
               <Trophy size={28} />
             </div>
             <div>
@@ -150,7 +150,7 @@ export default function DraftBoard() {
           
           <Button 
             size="lg" 
-            className={`h-16 px-16 text-xl font-bold uppercase tracking-widest transition-all ${!isOnClock ? 'opacity-50 grayscale' : 'hover:scale-105 active:scale-95 bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(255,94,44,0.4)]'}`}
+            className={`h-16 px-16 text-xl font-bold uppercase tracking-widest transition-all ${!isOnClock ? 'opacity-50 grayscale' : 'hover:scale-105 active:scale-95 bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_20px_rgba(212,175,55,0.4)]'}`}
             disabled={!isOnClock || doAction.isPending}
             onClick={handleDraft}
           >

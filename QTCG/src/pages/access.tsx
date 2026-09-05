@@ -18,7 +18,7 @@ export default function AccessScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="h-full w-full bg-background flex items-center justify-center p-4">
       <div className="max-w-md w-full border border-border bg-card p-10 rounded-xl shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1.5 bg-primary" />
         <h1 className="text-5xl font-black font-sans text-primary mb-1 tracking-tighter">QTCG</h1>

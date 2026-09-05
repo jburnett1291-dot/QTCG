@@ -30,7 +30,7 @@ export default function DirectorDeck() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0B0C10] p-6 gap-6">
+    <div className="flex flex-col h-full bg-background p-6 gap-6">
       <div className="grid grid-cols-2 gap-6 h-[50%] shrink-0">
         <div className="flex flex-col border border-border rounded-xl bg-card overflow-hidden relative shadow-lg">
           <div className="bg-background px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
@@ -62,7 +62,7 @@ export default function DirectorDeck() {
           </div>
         </div>
 
-        <div className="flex flex-col border-2 border-primary/40 rounded-xl bg-card overflow-hidden relative shadow-[0_0_30px_rgba(255,94,44,0.15)]">
+        <div className="flex flex-col border-2 border-primary/40 rounded-xl bg-card overflow-hidden relative shadow-[0_0_30px_rgba(212,175,55,0.15)]">
           <div className="bg-primary/10 px-4 py-3 border-b border-primary/20 flex items-center justify-between shrink-0 z-20">
             <div className="flex items-center gap-2 text-primary font-bold font-mono text-sm tracking-widest uppercase animate-pulse">
               <Tv size={16} /> Program Out
@@ -122,7 +122,7 @@ export default function DirectorDeck() {
                     key={pid}
                     onClick={() => setPreviewId(pid)}
                     className={`aspect-video rounded-md bg-background border relative cursor-pointer group overflow-hidden transition-all
-                      ${previewId === pid ? 'border-secondary shadow-[0_0_15px_rgba(0,210,185,0.3)] scale-[1.02]' : 'border-border hover:border-secondary/50'}
+                      ${previewId === pid ? 'border-primary shadow-[0_0_15px_rgba(212,175,55,0.3)] scale-[1.02]' : 'border-border hover:border-primary/50'}
                     `}
                   >
                     {p.media_url || p.hype_video_url ? (

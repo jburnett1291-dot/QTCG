@@ -87,7 +87,7 @@ export default function Sidebar() {
   return (
     <div className="flex flex-col h-full bg-card relative">
       <div className="p-5 border-b border-border bg-background/50 flex items-center gap-4 shrink-0">
-        <div className="w-10 h-10 rounded bg-primary flex items-center justify-center font-bold text-white shadow-lg text-lg uppercase">
+        <div className="w-10 h-10 rounded bg-primary flex items-center justify-center font-bold text-primary-foreground shadow-lg text-lg uppercase">
           {teamId ? teamId.substring(0, 3) : state.access === 'admin' ? 'ADM' : 'SPC'}
         </div>
         <div>
@@ -142,7 +142,7 @@ export default function Sidebar() {
                         <div className="w-5 text-center font-mono text-xs font-bold text-muted-foreground">
                           {(idx + 1).toString().padStart(2, '0')}
                         </div>
-                        <div className="w-1.5 h-1.5 rounded-full bg-secondary shrink-0 shadow-[0_0_8px_rgba(0,210,185,0.6)]" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
                         <div className="flex-1 min-w-0">
                           <div className="font-bold truncate flex items-center gap-2">
                             {p.gamertag || 'Unknown'}
@@ -186,7 +186,7 @@ export default function Sidebar() {
                 <div 
                   key={i} 
                   className={`w-[calc(20%-0.5rem)] aspect-square rounded-full border-2 flex items-center justify-center text-xs font-mono transition-colors
-                    ${p ? 'border-primary bg-primary/10 text-primary font-bold shadow-[0_0_10px_rgba(255,94,44,0.2)]' : 'border-border border-dashed text-muted-foreground/30'}
+                    ${p ? 'border-primary bg-primary/10 text-primary font-bold shadow-[0_0_10px_rgba(212,175,55,0.4)]' : 'border-border border-dashed text-muted-foreground/30'}
                   `}
                   title={p?.gamertag || p?.discord_id || `Slot ${i + 1}`}
                 >
