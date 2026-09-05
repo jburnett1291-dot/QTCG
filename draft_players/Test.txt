@@ -1,0 +1,47 @@
+QCL DRAFT ARCHIVE
+Saved: 2026-09-05 14:03
+==================================================
+
+STATUS:
+setup
+
+TEAMS:
+Team A, Team B, Team C, Team D
+
+COACHES:
+  Team A: 1337614287920959609
+
+PLAYERS:
+  1337614287920959609:   discord_id: 1337614287920959609
+  guild_id: 1523019786877927595
+  discord_username: qwiktv
+  gamertag: TheQwiktator
+  discord_name: 𝘚𝘵𝘦𝘱𝘩𝘦𝘯 𝘈. 𝘘𝘸𝘪𝘬
+  build: 2 Way
+  position: Hash
+  availability: weekdays
+  availability_label: Weekdays
+  socials:   x_twitter: QwikTelevision
+  xbox_psn: QwikTelevision
+  tiktok: QwikTV
+  youtube: Qwik
+  registered_at: 2026-09-03 11:22
+  updated_at: 2026-09-04 08:42
+  drafted_by: Not provided
+  combine_games: None
+  data_folder: draft_players\1337614287920959609
+  photo_path: draft_players\1337614287920959609\player_photo.png
+  photo_filename: Logo_2.png
+  eligible: True
+
+PICKS:
+None
+
+ORDER:
+None
+
+COMBINE_LOBBY:
+
+
+AUDIT_LOG:
+{'at': '2026-09-05 13:50', 'action': 'github_publish', 'actor_id': 1337614287920959609, 'details': {'files': 6, 'url': 'https://github.com/jburnett1291-dot/QTCG/tree/main/draft_players'}}
