@@ -11,39 +11,30 @@ export default function Sidebar() {
   const teamId = state?.my_team;
   const serverStrategy = teamId ? state?.strategies?.[teamId] : null;
 
-  const [notes, setNotes] = useState(() => {
-    return localStorage.getItem('qspn_local_notes') || serverStrategy?.notes || '';
-  });
-  const [board, setBoard] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('qspn_local_board') || 'null') || serverStrategy?.targets || [];
-    } catch {
-      return [];
-    }
-  });
+  const [notes, setNotes] = useState('');
+  const [board, setBoard] = useState<string[]>([]);
 
   const notesRef = useRef(notes);
   const boardRef = useRef(board);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (serverStrategy?.notes && !notesRef.current) {
-      setNotes(serverStrategy.notes);
-      notesRef.current = serverStrategy.notes;
-    }
-    if (serverStrategy?.targets && boardRef.current.length === 0) {
-      setBoard(serverStrategy.targets);
-      boardRef.current = serverStrategy.targets;
-    }
-  }, [serverStrategy]);
+    const nextNotes = serverStrategy?.notes || '';
+    const nextBoard = serverStrategy?.targets || [];
+    setNotes(nextNotes);
+    setBoard(nextBoard);
+    notesRef.current = nextNotes;
+    boardRef.current = nextBoard;
+  }, [teamId, serverStrategy?.updated_at]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (notesRef.current !== notes || JSON.stringify(boardRef.current) !== JSON.stringify(board)) {
         setIsSaving(true);
-        localStorage.setItem('qspn_local_notes', notes);
-        localStorage.setItem('qspn_local_board', JSON.stringify(board));
-        
+        if (!teamId) {
+          setIsSaving(false);
+          return;
+        }
         saveStrategy.mutate(
           { action: 'strategy', team: teamId, notes, targets: board },
           { 

@@ -28,7 +28,7 @@ if (!basePath) {
 }
 
 export default defineConfig({
-  base: basePath,
+  base: process.env.NODE_ENV === 'production' ? './' : basePath,
   plugins: [
     react(),
     tailwindcss(),

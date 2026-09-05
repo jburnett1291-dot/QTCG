@@ -380,7 +380,8 @@ async def draft_state(request):
     async with aiohttp.ClientSession() as session:
         draft, sha = await _draft_load_shared(session)
         # The server is authoritative for an expired clock.
-        if (draft.get("status") == "active"
+        if (draft.get("auto_pick_enabled") is True
+                and draft.get("status") == "active"
                 and time.time() >= float(draft.get("deadline_at") or 0)):
             # Cached reads do not carry a GitHub SHA. Refresh before a timeout
             # mutation so concurrent draft actions remain conflict-safe.

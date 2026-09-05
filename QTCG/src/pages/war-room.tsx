@@ -38,15 +38,11 @@ export default function WarRoomLayout({ forceMode }: { forceMode?: 'coach' | 'di
   return (
     <div className="h-full w-full bg-background text-foreground flex flex-col md:flex-row overflow-hidden font-sans">
       <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-        {mode !== 'director' && (
-          <>
-            <ResizablePanel defaultSize={25} minSize={20} maxSize={35} className="flex flex-col border-r border-border h-full">
-              <Sidebar />
-            </ResizablePanel>
-            <ResizableHandle className="w-1 bg-border hover:bg-primary transition-colors cursor-col-resize hidden md:flex" />
-          </>
-        )}
-        <ResizablePanel defaultSize={mode !== 'director' ? 75 : 100} className="flex flex-col relative bg-background h-full">
+        <ResizablePanel defaultSize={25} minSize={20} maxSize={35} className="flex flex-col border-r border-border h-full">
+          <Sidebar />
+        </ResizablePanel>
+        <ResizableHandle className="w-1 bg-border hover:bg-primary transition-colors cursor-col-resize hidden md:flex" />
+        <ResizablePanel defaultSize={75} className="flex flex-col relative bg-background h-full">
           <Header />
           
           {/* Main Area */}

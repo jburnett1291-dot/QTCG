@@ -1,5 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
+function apiPath(path: string) {
+  return window.location.pathname.startsWith('/warroom')
+    ? `/railway${path}`
+    : path;
+}
+
 export interface Player {
   discord_id: string;
   gamertag: string;
@@ -60,7 +66,7 @@ export function useDraftState() {
     queryFn: async () => {
       const session = localStorage.getItem('qcl-session');
       if (!session) throw new Error("No session");
-      const res = await fetch(`/api/draft/state?session=${encodeURIComponent(session)}`);
+      const res = await fetch(apiPath(`/api/draft/state?session=${encodeURIComponent(session)}`));
       if (!res.ok) {
         throw new Error(res.status === 401 ? "Unauthorized" : "Fetch failed");
       }
@@ -75,7 +81,7 @@ export function useDraftAction() {
   return useMutation({
     mutationFn: async (payload: any) => {
       const session = localStorage.getItem('qcl-session');
-      const res = await fetch(`/api/draft/action`, {
+      const res = await fetch(apiPath('/api/draft/action'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, session })

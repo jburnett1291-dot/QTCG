@@ -69,9 +69,10 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
+  const configuredBase = import.meta.env.BASE_URL?.replace(/\/$/, '') || '';
   const basePath = window.location.pathname.startsWith('/warroom')
     ? '/warroom'
-    : (import.meta.env.BASE_URL?.replace(/\/$/, '') || '');
+    : (configuredBase.startsWith('.') ? '' : configuredBase);
 
   return (
     <QueryClientProvider client={queryClient}>
