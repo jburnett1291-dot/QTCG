@@ -1,0 +1,59 @@
+{
+  "config": {
+    "season": 0,
+    "draftName": "QCL Season 0 Draft",
+    "rounds": 6,
+    "status": "setup",
+    "clockSeconds": 90,
+    "currentPick": 1
+  },
+  "players": [
+    {
+      "id": "1337614287920959609",
+      "name": "TheQwiktator",
+      "position": "Hash",
+      "archetype": "2 Way",
+      "overall": 0,
+      "team": "Free Agent",
+      "draftEligible": false,
+      "combineEligible": false,
+      "status": "prospect",
+      "stats": {}
+    }
+  ],
+  "teams": [
+    {
+      "id": "team-a",
+      "name": "Team A",
+      "abbreviation": "TA",
+      "color": "#1360F0"
+    },
+    {
+      "id": "team-b",
+      "name": "Team B",
+      "abbreviation": "TB",
+      "color": "#1360F0"
+    },
+    {
+      "id": "team-c",
+      "name": "Team C",
+      "abbreviation": "TC",
+      "color": "#1360F0"
+    },
+    {
+      "id": "team-d",
+      "name": "Team D",
+      "abbreviation": "TD",
+      "color": "#1360F0"
+    }
+  ],
+  "order": [
+    "team-a",
+    "team-b",
+    "team-c",
+    "team-d"
+  ],
+  "picks": [],
+  "publishedAt": "2026-09-05 13:50",
+  "source": "QCL2K Discord bot"
+}
