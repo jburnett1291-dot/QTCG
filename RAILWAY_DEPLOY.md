@@ -1,77 +1,61 @@
-# QTCG — Railway-only deployment
+# QTCG Railway deployment
 
-This folder is intentionally a single Python service. It serves the already
-compiled web client and the API from the same Railway domain, so no local
-computer, Replit server, or second frontend service is required.
+This is a single Railway service. It serves the compiled frontend and the
+Python API from the same hostname.
 
 ## Deploy
 
-1. Push the **contents of this folder** to the GitHub repository you connect to
-   Railway. Do not push the outer `QTCG-main` directory as the Railway root.
-2. Create one Railway service from that repository.
-3. Railway will detect `Dockerfile`. The service listens on Railway's `PORT`.
-4. After the first deploy, check:
+Put the contents of this folder at the root of the GitHub repository connected
+to Railway. Do not keep an extra `QTCG-main/` directory above these files.
 
-   `https://YOUR-RAILWAY-DOMAIN/api/health`
+Railway will detect the Dockerfile. Do not manually set `PORT`.
 
-   It should return JSON with `"ok": true`.
+Check the deployment with:
 
-## Required Railway variables
+```text
+https://YOUR-RAILWAY-DOMAIN/api/health
+https://YOUR-RAILWAY-DOMAIN/
+https://YOUR-RAILWAY-DOMAIN/warroom/war-room
+```
 
-Set these in the service's Variables tab. Never commit the values.
+## Required variables
 
-| Variable | Value |
-|---|---|
-| `DISCORD_CLIENT_ID` | Discord application/client ID |
-| `DISCORD_CLIENT_SECRET` | Discord OAuth2 client secret |
-| `GITHUB_TOKEN` | Fine-grained GitHub token with read/write Contents access |
-| `GITHUB_REPO` | `owner/repository` containing the shared save and card files |
-| `GITHUB_BRANCH` | `main` unless the data is on another branch |
-| `OWNER_ID` | Discord user ID allowed commissioner/owner access |
-| `QCL_SIGNING_SECRET` | Long random string used to sign sessions |
+Set these in Railway Variables:
 
-Optional variables:
+```text
+DISCORD_CLIENT_ID=your_discord_application_id
+DISCORD_CLIENT_SECRET=your_discord_client_secret
+GITHUB_TOKEN=your_github_contents_token
+GITHUB_REPO=owner/repository
+GITHUB_BRANCH=main
+OWNER_ID=your_discord_user_id
+QCL_SIGNING_SECRET=stable_random_session_signing_secret
+```
 
-| Variable | Default |
-|---|---|
-| `SAVE_PATH` | `fantasy_save.json` |
-| `POOL_PATH` | `fantasy_market.json` |
-| `DRAFT_PATH` | `qcl_draft_activity.json` |
-| `PACK_COST` | `10` |
-| `DRAFT_ADMIN_IDS` | `OWNER_ID` |
+Optional:
 
-Do not set `PORT` manually; Railway injects it.
+```text
+SAVE_PATH=fantasy_save.json
+POOL_PATH=fantasy_market.json
+DRAFT_PATH=qcl_draft_activity.json
+PACK_COST=10
+DRAFT_ADMIN_IDS=your_discord_user_id
+```
 
-## Discord OAuth settings
+The GitHub token must have Contents read/write permission because player saves
+and draft state are written to the repository.
 
-The backend exchanges the Discord Activity authorization code using the
-redirect URI `https://127.0.0.1`, so that exact URI must remain in the Discord
-Developer Portal OAuth2 redirect list. The client ID and secret in Railway
-must belong to the same Discord application.
+The current backend exchanges Discord authorization codes with the redirect
+URI `https://127.0.0.1`; keep that exact URI in the Discord Developer Portal.
 
-## What was fixed
+## Changes made
 
-- Removed the nested `QTCG/` source tree and invalid Replit-only
-  `catalog:`/`workspace:*` Node dependencies from the deploy root.
-- Added a Docker build so Railway does not try to build the incomplete
-  frontend source tree.
-- Made static files resolve from the server's real directory instead of the
-  process working directory.
-- Added SPA entry routes for `/warroom`, `/coach`, `/director`, `/draft`, and
-  `/war-room`.
-- Rewrote the stale hard-coded frontend API host to same-origin for normal
-  Railway visits. Discord-hosted visits retain the Discord proxy path.
-- Added Railway health checking at `/api/health`.
-- Removed the duplicate Python process entry point.
-
-## Verify after deployment
-
-Open these in order:
-
-1. `/api/health`
-2. `/api/diag` — confirms GitHub read/write configuration
-3. `/` — public app shell
-4. `/warroom/war-room` — draft room
-
-If `/api/diag` reports a GitHub write failure, the token is valid for reading
-but does not have write access to the repository contents.
+- Replaced the Railpack/Nixpacks setup with a deterministic Docker build.
+- Pinned the Python dependency.
+- Changed `/` from a health response to the actual frontend.
+- Added SPA routes for `/war-room`, `/warroom`, `/coach`, `/director`, and
+  `/draft`.
+- Added `/api/health` as the Railway health check.
+- Made static paths independent of Railway's working directory.
+- Removed the old hard-coded frontend API hostname at response time so direct
+  Railway visits use same-origin API calls.
