@@ -1226,11 +1226,12 @@ async def redirect_to_draft(request):
 
 
 async def serve_frontend_bundle(request):
-    """Use same-origin API calls when this bundle runs directly on Railway.
+    """Use same-origin API calls in both Railway and Discord Activity mode.
 
     The uploaded production bundle still contains the previous Railway
-    service URL. Discord-hosted requests keep their /.proxy/railway behavior;
-    normal browser requests should call this service instead.
+    service URL and a Replit-specific /.proxy/railway prefix. Discord URL
+    mappings in production expose /api, so the app must use normal
+    same-origin API paths instead of depending on that proxy prefix.
     """
     bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
     if not bundle.is_file():
@@ -1238,11 +1239,14 @@ async def serve_frontend_bundle(request):
     source = bundle.read_text(encoding="utf-8").replace(
         "https://diligent-eagerness-test.up.railway.app",
         "",
+    ).replace(
+        '"/.proxy/railway"',
+        '""',
     )
     return web.Response(
         text=source,
         content_type="text/javascript",
-        headers={"Cache-Control": "no-cache"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
