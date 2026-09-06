@@ -23,6 +23,7 @@ import json
 import time
 import base64
 import random
+import zlib as _zlib
 from pathlib import Path
 import aiohttp
 from aiohttp import web
@@ -604,6 +605,65 @@ async def draft_players(request):
             "revision": draft["revision"],
             "draft": _draft_public(draft, uid),
         }))
+
+
+async def resource_keep_cut(request):
+    """Save one authenticated user's current Keep 4 / Cut 4 decision."""
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+    token = body.get("session") or request.query.get("session")
+    sess = _read_session(token) if token else None
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+
+    players = body.get("players")
+    keeps = body.get("keeps")
+    if (not isinstance(players, list) or not isinstance(keeps, list)
+            or len(players) != 8 or len(keeps) != 4):
+        return _cors(web.json_response(
+            {"error": "submit exactly 8 players with exactly 4 keeps"}, status=400
+        ))
+    player_ids = [str(player).strip() for player in players]
+    keep_ids = [str(player).strip() for player in keeps]
+    if (not all(player_ids) or len(set(player_ids)) != 8
+            or len(set(keep_ids)) != 4 or not set(keep_ids).issubset(player_ids)):
+        return _cors(web.json_response(
+            {"error": "players and keeps must be unique valid selections"}, status=400
+        ))
+
+    uid = str(sess["id"])
+    cuts = [player for player in player_ids if player not in set(keep_ids)]
+    async with aiohttp.ClientSession() as session:
+        raw, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(raw)
+        decisions = draft.setdefault("resource_decisions", {})
+        keep_cut = decisions.setdefault("keep_cut", {})
+        keep_cut[uid] = {
+            "players": player_ids,
+            "keeps": keep_ids,
+            "cuts": cuts,
+            "updated_at": time.time(),
+        }
+        _draft_audit(draft, "resource_keep_cut_saved", uid,
+                     keep_count=len(keep_ids), cut_count=len(cuts))
+        draft["revision"] = int(draft.get("revision", 0)) + 1
+        ok = await _gh_put(
+            session, DRAFT_PATH, draft, sha,
+            f"resources: keep/cut saved for {uid}",
+        )
+        if not ok:
+            return _cors(web.json_response(
+                {"error": "draft changed; refresh and retry"}, status=409
+            ))
+        _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
+    return _cors(web.json_response({
+        "ok": True, "keeps": keep_ids, "cuts": cuts,
+        "updated_at": keep_cut[uid]["updated_at"],
+    }))
 
 
 # ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
@@ -1312,10 +1372,43 @@ async def proxy_image(request):
         except Exception as e:
             return _cors(web.json_response({"error": str(e)}, status=500))
 
-# --- Serve the frontend index.html ---
-async def serve_index(request):
-    """Serve the War Room / QTCG single-page application frontend."""
-    return web.FileResponse(BASE_DIR / 'index.html')
+# --- Branded frontend shells -------------------------------------------------
+# Keep the compiled applications untouched.  The shared navigation is added at
+# response time so all Discord Activity entry points get the same document
+# chrome without changing either production build.
+_SHELL_NAV = _zlib.decompress(base64.b64decode("eNqVVVFv2zYQfvevYBigkDBJtbO0LuQ4Q+AFQ4F1wewUfQjyQIsnm61MKiTV2E3933dkJFl23K17sUXy7ru773gfexfGbgoggo/pQ1bEZsk08Fiyr2LBrFAy9uf0skdI4gw0GFXpDExs2fzJwtrGHDKlvXEqlYTR41JYiE3JMsCNR83K7UvvnBXFnGVfnkplhPfNxRr46FssJId1ejY4H56/+/Xt+XBkVZm+K9cjLRZL679KxrmQi3RYrsmgjxtzpTnodIBrowrByembs7eDYV4fxJpxURnv64IutKokT08H/cHwbDjKVKF0egosH+T5KFfSpsN+3yOT99KCjszGWFjFlYgMkyY2oEU+KsDimS/UJZP0h7AaHWNk27t47Wm87F2YTIvSXvaCICTjS/KEzGRKGksKNoeCjEkgFQd/5j4ShzfBjEDaxGqxCsLEqo9lCXrCDAThCAEwESIQAykFjhDIrQF3kFcyc1k0pxjTBSRE5CTgKqtWDvahAr2ZQQGZVTqgL9tMw5BosJWWxOrKIzdZ46nBiHdJkhzHu8KolEXzylolaXjfdX6w2QKdHUaSY9uDXe2ejWY5HhP69+3kDxp2vR+Z/lnnT1dTMr25+dAAuPJPfPTv38kJArX1tdQ1UfDXMiHBxXIeSYkDIu11Aa5W8urVkd2kdjKBg/ZghPx2zD11VezvdTJsY/84vaZPmF3Lf6aBWajhkPym6sY2WWrI0YG+brtMDyw6t84ZTq9nNx+nk+vZoV1WMGP+YisXP/D17XaQWlfc3galIfmFUPLyiu1zvior66/yAjCP59XMTZAPUtdzR7kwZcE2NKKsEAv5HmfU4OJzZazIN3UBuFHrBX4960H7MfW6QKO6R3QnDmjiZQH/nSDMxDeoPz+B0yFcPM//7Hn8ce1Iu9WoD7nSK3qf4N81y5ZBDR58gY2/ni17XhPucPseK22K9uvDjnlL35XfW2lxjXHqctgTA/bKolTgyAF2XwsW+4GgETaybXhnEgqVeUC8h3YpfTPH+7cj/Ff0rNLa80yQ6AU00K75OAOg7RX/jG9Be8PRLUfiwJHcAjf5dGRspzUH4rNtRVPNEf+rH04Jj+RDZX0lN/V2UMN58MY2qT92Ath81PlF5ClbioL/KYxNXcyImGpuNYBfbT1aq6hugaTcihWoynZkvR7iXUWoFSetW6PETSXNe/gzg0xa670BpMdfWPrC6Yfz37H5DwXoWP6v+0Z21c0V3yQMXzLJJ47uoEGsTV2XtxEZvOn3j5PcNhRlAEmU+N4EITr0+95jG7rm4Mtbv7j/AHZS8Os=")).decode("utf-8")
+
+
+
+def _shell_response(filename):
+    shell = (BASE_DIR / filename).read_text(encoding="utf-8")
+    shell = shell.replace("</body>", _SHELL_NAV + "\n</body>")
+    return web.Response(
+        text=shell,
+        content_type="text/html",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+async def serve_qtcg(request):
+    """The card game is the primary Activity shell."""
+    return _shell_response("qtcg.html")
+
+
+async def serve_war_room(request):
+    """Each War Room alias serves its shell directly for Discord's proxy."""
+    return _shell_response("index.html")
+
+
+_RESOURCES_PAGE = _zlib.decompress(base64.b64decode("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")).decode("utf-8")
+
+
+async def serve_resources(request):
+    return web.Response(
+        text=_RESOURCES_PAGE,
+        content_type="text/html",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 async def serve_frontend_bundle(request):
@@ -1359,18 +1452,25 @@ app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/api/draft/players", draft_players)
 app.router.add_post("/api/draft/players", draft_players)
 app.router.add_options("/api/draft/players", draft_players)
+app.router.add_post("/api/resources/keep-cut", resource_keep_cut)
+app.router.add_options("/api/resources/keep-cut", resource_keep_cut)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
 
 # --- 2. FRONTEND & STATIC ROUTES ---
-# Serve main entry points to output the HTML frame
-app.router.add_get("/", serve_index)
-app.router.add_get("/war-room", serve_index)
-app.router.add_get("/warroom", serve_index)
-app.router.add_get("/warroom/war-room", serve_index)
-app.router.add_get("/draft", serve_index)
-app.router.add_get("/coach", serve_index)
-app.router.add_get("/director", serve_index)
+# Canonical API routes above must remain ahead of this static catch-all.
+# QTCG is the default Activity; War Room aliases deliberately serve, rather
+# than redirect, because Discord's embedded proxy does not reliably retain
+# redirects between Activity documents.
+app.router.add_get("/", serve_qtcg)
+app.router.add_get("/qtcg", serve_qtcg)
+app.router.add_get("/draft", serve_war_room)
+app.router.add_get("/war-room", serve_war_room)
+app.router.add_get("/warroom", serve_war_room)
+app.router.add_get("/warroom/war-room", serve_war_room)
+app.router.add_get("/resources", serve_resources)
+app.router.add_get("/coach", serve_war_room)
+app.router.add_get("/director", serve_war_room)
 app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
 
 app.router.add_static('/', path=str(BASE_DIR), name='static', show_index=False)
