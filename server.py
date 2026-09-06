@@ -1399,8 +1399,7 @@ app.router.add_options("/draft/action", draft_action)
 # Discord Activity URL mappings preserve their target path prefix. Register
 # equivalent API routes beneath each public Activity path so absolute frontend
 # requests such as /api/binder and /api/draft/state survive proxy rewriting.
-for _prefix in ("/qtcg", "/qtcg/"):
-    _prefix = _prefix.rstrip("/")
+for _prefix in ("/qtcg",):
     app.router.add_post(f"{_prefix}/api/login", login)
     app.router.add_options(f"{_prefix}/api/login", login)
     app.router.add_post(f"{_prefix}/api/starter", claim_starter)
