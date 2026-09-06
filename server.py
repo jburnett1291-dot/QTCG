@@ -1396,6 +1396,37 @@ app.router.add_get("/draft/export", draft_export)
 app.router.add_post("/draft/action", draft_action)
 app.router.add_options("/draft/action", draft_action)
 
+# Discord Activity URL mappings preserve their target path prefix. Register
+# equivalent API routes beneath each public Activity path so absolute frontend
+# requests such as /api/binder and /api/draft/state survive proxy rewriting.
+for _prefix in ("/qtcg", "/qtcg/"):
+    _prefix = _prefix.rstrip("/")
+    app.router.add_post(f"{_prefix}/api/login", login)
+    app.router.add_options(f"{_prefix}/api/login", login)
+    app.router.add_post(f"{_prefix}/api/starter", claim_starter)
+    app.router.add_options(f"{_prefix}/api/starter", claim_starter)
+    app.router.add_get(f"{_prefix}/api/starter_status", starter_status)
+    app.router.add_get(f"{_prefix}/api/balance", get_balance)
+    app.router.add_get(f"{_prefix}/api/lineup", get_lineup)
+    app.router.add_post(f"{_prefix}/api/lineup", set_lineup)
+    app.router.add_options(f"{_prefix}/api/lineup", set_lineup)
+    app.router.add_post(f"{_prefix}/api/openpack", open_pack)
+    app.router.add_options(f"{_prefix}/api/openpack", open_pack)
+    app.router.add_post(f"{_prefix}/api/binder", get_binder)
+    app.router.add_get(f"{_prefix}/api/binder", get_binder)
+    app.router.add_options(f"{_prefix}/api/binder", get_binder)
+    app.router.add_get(f"{_prefix}/api/cards", cards_debug)
+    app.router.add_get(f"{_prefix}/api/img", proxy_image)
+    app.router.add_options(f"{_prefix}/api/img", proxy_image)
+
+for _prefix in ("/warroom", "/war-room", "/warroom/war-room"):
+    app.router.add_get(f"{_prefix}/api/draft/state", draft_state)
+    app.router.add_get(f"{_prefix}/api/draft/export", draft_export)
+    app.router.add_post(f"{_prefix}/api/draft/action", draft_action)
+    app.router.add_options(f"{_prefix}/api/draft/action", draft_action)
+    app.router.add_get(f"{_prefix}/api/img", proxy_image)
+    app.router.add_options(f"{_prefix}/api/img", proxy_image)
+
 # Frontend routes must be registered before the static catch-all.
 # The legacy QTCG app owns the root and its original collection routes;
 # the modern live draft room lives at /draft.
