@@ -23,14 +23,13 @@ import json
 import time
 import base64
 import random
-import zlib as _zlib
 import asyncio
 import datetime as _datetime
 import socket
 from pathlib import Path
 import aiohttp
 from aiohttp import web
-from draft_operations import WAR_ROOM_CONTROL, create_handlers
+from draft_operations import create_handlers
 from activity_diagnostics import (
     activity_diagnostics,
     request_diagnostics_middleware,
@@ -1292,100 +1291,14 @@ async def proxy_image(request):
         except Exception as e:
             return _cors(web.json_response({"error": str(e)}, status=500))
 
-# --- Branded frontend shells -------------------------------------------------
-# Keep the compiled applications untouched.  The shared navigation is added at
-# response time so all Discord Activity entry points get the same document
-# chrome without changing either production build.
-_SHELL_NAV = _zlib.decompress(base64.b64decode("eNqVVm1vGjkQ/p5f4TpStauDDeTSUkGSU0SjKlJ76UGifoiik/HOgpvF3tjeEEr57zf2vrAEctf7gPCM58XzzNsenBq7TIGI+Iw+8rRtZkxD3JbsSUyZFUq2/T09PyAkcgIajMo1B9O2bLKy8GzbMXClvXBfKgmDxUxYaJuMcUDGQrNsvaudsDSdMP6wypQRXjcRzxAPfrSFjOG5f9w96Z18+P39SW9gVdb/kD0PtJjOrD9lLI6FnPZ72TPpdpAxUToG3e8ibVQqYnL47vh9t5eUF23NYpEbr+ucTrXKZdw/7Ha6vePegKtU6f4hsKSbJINESdvvdTreMrmSFnTLLI2FeTsXLcOkaRvQIhmkYPHOB+oeE3V6MB/sQ2R9cHrkYTw/ODVci8yeHwRBSM7OyQqR4UoaSzhDUcFZ+pXZmSFnZEWPaB9/LUKPHi2f1kQNouNsCHcVa5ZYxy4OjrVgGL5S8x3uq8w9KusBvjNWPJ+DtBGif/mEh88CUZGgA8pTwR/QRgCOX0dWxcYknymNMfnryDI9BRvxVBnA27dv9/IDyu5mGpJ7Gg68LZGQ4E1hKiQabK5lcYGJILlOC8LqJVk5Et1JWJDb0eegUIrQ+IW1WkxyCwF1tmnYIqniPlWRY4QDssZUWD4jwd8hGir9kHUjnBhfJ6RXQifoKlJYmwKJs7ONuZKH0W2n9s4pZHiSbA73jdAaZrfjK9DJtP//CAnLUxuEzTuDPXI1n0MsmIWvWmWs6N5KaoFNpRZR/TZmjJjKoOnRCa5bCF8O/lyEmrIJOCQDqWLweXWHyFX5EPvEZ02LeRBGVt1mGeghM1B4dVkRaAMbHWI0gR1vwF0kueQeu/IWO2FVo1AX2WMOejmGFLhVWGG7w4eGFUr+0YNGgvDWddBdFEX77V2gV8paWAhWSRreN5Vdr6GysxEliFuwid2jUZGYa/rXzfBTVZ6FNvbOryp/uxiR0fX1l6369t5//iRv0FAdXw1dPSwQeyaw9dCX08B60hjkZQouVldzu9yoVDKBM+2NEfLHPvW+i2Kb13hh7fv151V5wtfV+HMNWJulOQS/irqS9e2HCs2R9kKiUXVOcHQ5vr4dDS/HL+V4ivX9J3aXK1wf34aD0LrgthiUhuQ3QsluiW1jPs9wcLhSxkEyLKmxm+veSRnPHY2FyVK2pC3KUuyyK9wcOJ3p9xybLVmWASCj3GJ4KrZUfRj5bUVbZY7oZmWhiF9W+O/W1Fj8gPL4Ddx2RKLYSuNiKSHtQLvRuLUSpef0PsK/S8ZnQWk8eIClL88aPb+p7pB9j5FWQXv6Zca8pM/Kx3rhucS4nfcyJ2Zr9jItWNs3hFs8ozrhjU6oZ1U1KoumaVRH+K/Wea61x5kg0FOoTLvkYw+Athfxd/xCqSsc1RIEDhzIteHqPY0xtpk1L4bPuh6aaoL2n3xzug30Jbc+kuuSHZTmvPFKNioPmwFYHcr3tciKz0Qau6Xbdz5bxOQTqwE8tfbW6onqCATlRsxB5bbxsVE28SYinBVvarVqEleRVF9pv9LIpJbeakC6/7uP7ii92v8Nmf+YAA3J/1VvjW+biYqXEcNNJuOhgzuoLJai62JNdt91OvtBrhOKYwBBlLhvAvzK6HY6XmMduuTg92D5HfgP70XJeQ==")).decode("utf-8")
-
-
-
-def _shell_response(filename, extra=""):
-    shell = (BASE_DIR / filename).read_text(encoding="utf-8")
-    # Bust Discord's cached hashed-bundle response without changing its route.
-    # The replacement includes the closing quote, so an already-versioned URL
-    # is not matched and cannot receive the version twice.
-    for bundle in ("index-DZHMJUsJ.js", "index-BHe8WMvJ.js"):
-        shell = shell.replace(
-            f'src="/assets/{bundle}"', f'src="/assets/{bundle}?v=20260906-5"'
-        ).replace(
-            f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-5"'
-        )
-    shell = shell.replace("</body>", extra + "\n</body>")
-    return web.Response(
-        text=shell,
-        content_type="text/html",
-        headers={"Cache-Control": "no-store, max-age=0"},
-    )
-
-
 async def serve_qtcg(request):
     """The sole Activity document; aliases normalize in the client."""
     return web.Response(text=SPA_HTML, content_type="text/html",
                         headers={"Cache-Control": "no-store, max-age=0"})
 
 
-async def serve_war_room(request):
-    """Each War Room alias serves its shell directly for Discord's proxy."""
-    return _shell_response("index.html", WAR_ROOM_CONTROL)
-
-
-_RESOURCES_PAGE = _zlib.decompress(base64.b64decode("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")).decode("utf-8")
-
-
-# The Resources document is stored compressed above; amend its decoded navigation
-# rather than touching its production payload.
-_RESOURCES_PAGE = _RESOURCES_PAGE.replace(
-    '<a href="/resources" aria-current="page">RESOURCES</a>',
-    '<a href="/resources" aria-current="page">RESOURCES</a><a href="/diagnostics">DIAGNOSTICS</a>',
-)
-
-
 async def serve_resources(request):
     return await serve_qtcg(request)
-
-
-async def serve_frontend_bundle(request):
-    """Make the uploaded production bundle use this Railway service's API."""
-    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
-    if not bundle.is_file():
-        raise web.HTTPNotFound(text="Frontend bundle not found")
-    source = bundle.read_text(encoding="utf-8").replace(
-        "https://diligent-eagerness-test.up.railway.app",
-        "",
-    ).replace('"/.proxy/railway"', '""')
-    return web.Response(
-        text=source,
-        content_type="text/javascript",
-        headers={"Cache-Control": "no-store, max-age=0"},
-    )
-
-
-async def serve_war_room_bundle(request):
-    """Serve the War Room bundle with its API base on Discord's same origin."""
-    bundle = BASE_DIR / "assets" / "index-BHe8WMvJ.js"
-    if not bundle.is_file():
-        raise web.HTTPNotFound(text="Frontend bundle not found")
-    source = bundle.read_text(encoding="utf-8").replace(
-        "https://diligent-eagerness-test.up.railway.app",
-        "",
-    ).replace('"/.proxy/railway"', '""')
-    old_mapper = 'status:a.status==="complete"?"complete":a.status==="paused"?"paused":"live"'
-    new_mapper = 'status:a.status==="active"?"live":a.status==="complete"?"complete":"paused"'
-    mapper_count = source.count(old_mapper)
-    # Guard the targeted production-build transform: exactly one known mapper
-    # must change, otherwise fail visibly rather than silently restoring LIVE.
-    if mapper_count != 1:
-        print("[war-room bundle] lifecycle mapper count=%s (expected 1)" % mapper_count)
-        raise web.HTTPInternalServerError(
-            text="War Room lifecycle mapper mismatch; deployment bundle changed"
-        )
-    source = source.replace(old_mapper, new_mapper, 1)
-    return web.Response(
-        text=source,
-        content_type="text/javascript",
-        headers={"Cache-Control": "no-store, max-age=0"},
-    )
 
 
 draft_state, draft_action = create_handlers({
@@ -1458,9 +1371,7 @@ app.router.add_options("/api/img", proxy_image)
 
 # --- 2. FRONTEND & STATIC ROUTES ---
 # Canonical API routes above must remain ahead of this static catch-all.
-# QTCG is the default Activity; War Room aliases deliberately serve, rather
-# than redirect, because Discord's embedded proxy does not reliably retain
-# redirects between Activity documents.
+# Every Activity entry point serves the exact same SPA document.
 app.router.add_get("/", serve_qtcg)
 app.router.add_get("/qtcg", serve_qtcg)
 app.router.add_get("/draft", serve_qtcg)
@@ -1471,8 +1382,6 @@ app.router.add_get("/resources", serve_resources)
 app.router.add_get("/diagnostics", serve_diagnostics)
 app.router.add_get("/coach", serve_qtcg)
 app.router.add_get("/director", serve_qtcg)
-app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
-app.router.add_get("/assets/index-BHe8WMvJ.js", serve_war_room_bundle)
 app.router.add_get("/assets/discord-embedded-sdk.js", serve_discord_sdk)
 
 app.router.add_static('/', path=str(BASE_DIR), name='static', show_index=False)
