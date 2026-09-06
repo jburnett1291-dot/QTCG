@@ -1389,6 +1389,15 @@ _SHELL_NAV = _zlib.decompress(base64.b64decode("eNqVVVFv2zYQfvevYBigkDBJtbO0LuQ4
 
 def _shell_response(filename):
     shell = (BASE_DIR / filename).read_text(encoding="utf-8")
+    # Bust Discord's cached hashed-bundle response without changing its route.
+    # The replacement includes the closing quote, so an already-versioned URL
+    # is not matched and cannot receive the version twice.
+    for bundle in ("index-DZHMJUsJ.js", "index-BHe8WMvJ.js"):
+        shell = shell.replace(
+            f'src="/assets/{bundle}"', f'src="/assets/{bundle}?v=20260906-3"'
+        ).replace(
+            f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-3"'
+        )
     shell = shell.replace("</body>", _SHELL_NAV + "\n</body>")
     return web.Response(
         text=shell,
