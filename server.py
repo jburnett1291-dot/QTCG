@@ -1389,16 +1389,6 @@ app.router.add_options("/api/api/draft/action", draft_action)
 app.router.add_get("/api/api/img", proxy_image)
 app.router.add_options("/api/api/img", proxy_image)
 
-# A few Discord Activity clients preserve the root mapping for the document
-# but strip the /api segment from relative fetches. These aliases are
-# intentionally read/write compatible with the canonical API routes.
-app.router.add_post("/binder", get_binder)
-app.router.add_options("/binder", get_binder)
-app.router.add_get("/draft/state", draft_state)
-app.router.add_get("/draft/export", draft_export)
-app.router.add_post("/draft/action", draft_action)
-app.router.add_options("/draft/action", draft_action)
-
 # Frontend routes must be registered before the static catch-all.
 # The legacy QTCG app owns the root and its original collection routes;
 # the modern live draft room lives at /draft.
