@@ -24,9 +24,13 @@ import time
 import base64
 import random
 import zlib as _zlib
+import asyncio
+import datetime as _datetime
+import socket
 from pathlib import Path
 import aiohttp
 from aiohttp import web
+from draft_operations import WAR_ROOM_CONTROL, create_handlers
 from activity_diagnostics import (
     activity_diagnostics,
     request_diagnostics_middleware,
@@ -222,9 +226,11 @@ def _cors(resp):
 
 def _draft_default():
     return {
-        "revision": 0, "status": "setup", "teams": [], "coaches": {},
+        "schema_version": 2, "revision": 0, "status": "setup", "teams": [], "coaches": {},
         "players": {}, "order": [], "picks": [], "current_pick": 0,
         "pick_seconds": 90, "deadline_at": None, "paused_remaining": None,
+        "scheduled_at": None, "started_at": None, "stopped_at": None,
+        "lifecycle_updated_at": None, "lifecycle_updated_by": None,
         "protected_picks": [], "trades": [], "audit_log": [],
         "promo": None,
     }
@@ -233,6 +239,12 @@ def _draft_default():
 # A two-second process cache lets dozens of Activity clients share one GitHub
 # read while keeping the draft board effectively live.
 _DRAFT_CACHE = {"t": 0.0, "draft": None}
+# This lock intentionally protects only this Railway process. It serializes
+# local mutations, but is not a cross-replica locking mechanism.
+_DRAFT_MUTATION_LOCK = asyncio.Lock()
+_DRAFT_LOCK_SCOPE = "single-process asyncio.Lock; not cross-replica"
+_DRAFT_PROCESS_ID = "%s:%s" % (socket.gethostname(), os.getpid())
+_GH_LAST_ERROR = None
 
 
 async def _draft_load_shared(session):
@@ -250,7 +262,34 @@ def _draft_normalize(data):
     draft = _draft_default()
     if isinstance(data, dict):
         draft.update(data)
+    draft["schema_version"] = 2
+    if draft.get("status") not in {"setup", "scheduled", "active", "paused", "stopped", "complete"}:
+        draft["status"] = "setup"
+    for key in ("scheduled_at", "started_at", "stopped_at",
+                "lifecycle_updated_at", "lifecycle_updated_by"):
+        draft.setdefault(key, None)
     return draft
+
+
+def _draft_lifecycle(draft, status, uid):
+    draft["status"] = status
+    draft["lifecycle_updated_at"] = time.time()
+    draft["lifecycle_updated_by"] = str(uid)
+
+
+def _draft_schedule_timestamp(value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("schedule requires an ISO timestamp")
+    try:
+        parsed = _datetime.datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("timestamp must include timezone")
+        stamp = parsed.timestamp()
+    except (TypeError, ValueError):
+        raise ValueError("schedule requires a valid ISO timestamp with timezone")
+    if stamp <= time.time():
+        raise ValueError("scheduled time must be in the future")
+    return stamp
 
 
 def _draft_session(request, body=None):
@@ -368,147 +407,6 @@ def _draft_record_pick(draft, player, uid, source):
     }
     _draft_audit(draft, "pick_recorded", uid, **pick)
     return pick
-
-
-async def draft_state(request):
-    sess = _draft_session(request)
-    if not sess:
-        return _cors(web.json_response({"error": "not logged in"}, status=401))
-    async with aiohttp.ClientSession() as session:
-        draft, sha = await _draft_load_shared(session)
-        # The server is authoritative for an expired clock.
-        if (draft.get("status") == "active"
-                and time.time() >= float(draft.get("deadline_at") or 0)):
-            # Cached reads do not carry a GitHub SHA. Refresh before a timeout
-            # mutation so concurrent draft actions remain conflict-safe.
-            if sha is None:
-                draft, sha = await _gh_get(session, DRAFT_PATH)
-                draft = _draft_normalize(draft)
-            turn = _draft_turn(draft)
-            if turn:
-                player = _draft_auto_player(draft, turn["team"])
-                if player:
-                    _draft_record_pick(draft, player, None, "clock_auto_pick")
-                    draft["revision"] = int(draft.get("revision", 0)) + 1
-                    await _gh_put(
-                        session, DRAFT_PATH, draft, sha,
-                        f"draft activity: timeout pick #{turn['pick']}"
-                    )
-                    _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
-    return _cors(web.json_response(_draft_public(draft, sess["id"])))
-
-
-async def draft_action(request):
-    if request.method == "OPTIONS":
-        return _cors(web.Response())
-    try:
-        body = await request.json()
-    except Exception:
-        return _cors(web.json_response({"error": "bad request"}, status=400))
-    sess = _draft_session(request, body)
-    if not sess:
-        return _cors(web.json_response({"error": "not logged in"}, status=401))
-    uid, action = str(sess["id"]), str(body.get("action", "")).lower()
-    async with aiohttp.ClientSession() as session:
-        draft_raw, sha = await _gh_get(session, DRAFT_PATH)
-        draft = _draft_normalize(draft_raw)
-        admin = _draft_is_admin(uid)
-        my_team = _draft_team_for_user(draft, uid)
-
-        if action == "pick":
-            turn = _draft_turn(draft)
-            if draft.get("status") != "active" or not turn:
-                return _cors(web.json_response({"error": "draft is not active"}, status=409))
-            if not admin and my_team != turn["team"]:
-                return _cors(web.json_response({"error": "your team is not on the clock"}, status=403))
-            wanted = str(body.get("player_id") or body.get("player", "")).lower()
-            player = next(
-                (p for p in _draft_available(draft)
-                 if str(p.get("discord_id", "")).lower() == wanted
-                 or str(p.get("gamertag", "")).lower() == wanted),
-                None,
-            )
-            if not player:
-                return _cors(web.json_response({"error": "player unavailable"}, status=404))
-            _draft_record_pick(draft, player, uid, "commissioner_override" if admin and my_team != turn["team"] else "activity")
-        elif action == "strategy":
-            if not my_team and not admin:
-                return _cors(web.json_response({"error": "coach access required"}, status=403))
-            team = str(body.get("team") or my_team)
-            if not admin and team != my_team:
-                return _cors(web.json_response({"error": "wrong team"}, status=403))
-            draft.setdefault("strategies", {})[team] = {
-                "targets": list(body.get("targets", []))[:50],
-                "notes": str(body.get("notes", ""))[:4000],
-                "updated_at": time.time(), "updated_by": uid,
-            }
-            _draft_audit(draft, "strategy_updated", uid, team=team)
-        elif not admin:
-            return _cors(web.json_response({"error": "commissioner access required"}, status=403))
-        elif action == "pause":
-            if draft.get("status") == "active":
-                draft["paused_remaining"] = max(1, int(float(draft.get("deadline_at") or time.time()) - time.time()))
-                draft["status"], draft["deadline_at"] = "paused", None
-            elif draft.get("status") == "paused":
-                draft["status"] = "active"
-                draft["deadline_at"] = time.time() + int(draft.pop("paused_remaining", None) or draft.get("pick_seconds", 90))
-            _draft_audit(draft, "draft_pause_toggled", uid, status=draft["status"])
-        elif action == "advance":
-            turn = _draft_turn(draft)
-            if not turn:
-                return _cors(web.json_response({"error": "no remaining pick"}, status=409))
-            draft["current_pick"] += 1
-            draft["deadline_at"] = time.time() + int(draft.get("pick_seconds", 90))
-            _draft_audit(draft, "force_advance", uid, skipped=turn)
-        elif action == "undo":
-            if not draft.get("picks"):
-                return _cors(web.json_response({"error": "no pick to undo"}, status=409))
-            pick = draft["picks"].pop()
-            player = next(
-                (p for p in draft.get("players", {}).values()
-                 if str(p.get("discord_id")) == str(pick.get("player_id"))),
-                None,
-            )
-            if player:
-                player["drafted_by"] = None
-                player.pop("pick_number", None)
-                player.pop("drafted_at", None)
-            draft["current_pick"] = max(0, int(draft["current_pick"]) - 1)
-            draft["status"] = "active"
-            draft["deadline_at"] = time.time() + int(draft.get("pick_seconds", 90))
-            _draft_audit(draft, "pick_reversed", uid, pick=pick)
-        elif action == "protect":
-            pick_no = int(body.get("pick"))
-            protected = set(int(x) for x in draft.get("protected_picks", []))
-            protected.symmetric_difference_update({pick_no})
-            draft["protected_picks"] = sorted(protected)
-            _draft_audit(draft, "pick_protection_toggled", uid, pick=pick_no, protected=pick_no in protected)
-        elif action == "trade":
-            pick_no, to_team = int(body.get("pick")), str(body.get("to_team", ""))
-            slot = next((x for x in draft.get("order", []) if int(x["pick"]) == pick_no), None)
-            made = {int(x["pick"]) for x in draft.get("picks", [])}
-            if not slot or pick_no in made or pick_no in set(draft.get("protected_picks", [])):
-                return _cors(web.json_response({"error": "pick unavailable or protected"}, status=409))
-            if to_team not in draft.get("teams", []):
-                return _cors(web.json_response({"error": "unknown destination team"}, status=400))
-            old_team, slot["team"] = slot["team"], to_team
-            draft.setdefault("trades", []).append({
-                "at": time.time(), "pick": pick_no, "from": old_team,
-                "to": to_team, "approved_by": uid,
-            })
-            _draft_audit(draft, "pick_traded", uid, pick=pick_no, from_team=old_team, to_team=to_team)
-        elif action == "clear_promo":
-            _draft_audit(draft, "promo_completed", uid, event_id=(draft.get("promo") or {}).get("event_id"))
-            draft["promo"] = None
-        else:
-            return _cors(web.json_response({"error": "unknown action"}, status=400))
-
-        draft["revision"] = int(draft.get("revision", 0)) + 1
-        ok = await _gh_put(session, DRAFT_PATH, draft, sha, f"draft activity: {action}")
-        if not ok:
-            return _cors(web.json_response({"error": "draft changed; refresh and retry"}, status=409))
-        _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
-    return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
 
 
 async def draft_players(request):
@@ -689,6 +587,7 @@ async def _gh_get(session, path):
 
 
 async def _gh_put(session, path, obj, sha, msg):
+    global _GH_LAST_ERROR
     url = f"{_GH_API}/repos/{GH_REPO}/contents/{path}"
     headers = {"Authorization": f"token {GH_TOKEN}",
                "Accept": "application/vnd.github+json"}
@@ -698,7 +597,16 @@ async def _gh_put(session, path, obj, sha, msg):
     if sha:
         body["sha"] = sha
     async with session.put(url, headers=headers, json=body) as r:
-        return r.status in (200, 201)
+        if r.status in (200, 201):
+            _GH_LAST_ERROR = None
+            return True
+        # Never let a failed persistence write appear successful or update a
+        # caller cache.  409/422 are normal SHA/content conflicts.
+        detail = await r.text()
+        _GH_LAST_ERROR = {"status": r.status, "path": path, "detail": detail[:300],
+                          "at": time.time()}
+        print("[github put failed] %s %s: %s" % (r.status, path, detail[:300]))
+        return False
 
 
 # ── pool + draw (server-side, anti-cheat) ──────────────────────────────────
@@ -1307,7 +1215,8 @@ async def cards_debug(request):
 
 async def health(request):
     return _cors(web.json_response({"ok": True, "service": "qcl-pull-server",
-                                    "repo": GH_REPO}))
+                                     "repo": GH_REPO, "process_id": _DRAFT_PROCESS_ID,
+                                     "lock_scope": _DRAFT_LOCK_SCOPE}))
 
 
 
@@ -1321,6 +1230,8 @@ async def diag(request):
     out["env"]["repo"] = GH_REPO
     out["env"]["pool_path"] = POOL_PATH
     out["env"]["save_path"] = SAVE_PATH
+    out["draft_lock"] = {"process_id": _DRAFT_PROCESS_ID, "scope": _DRAFT_LOCK_SCOPE,
+                         "last_github_write_error": _GH_LAST_ERROR}
     async with aiohttp.ClientSession() as session:
         try:
             pool, _ = await _gh_get(session, POOL_PATH)
@@ -1387,18 +1298,18 @@ _SHELL_NAV = _zlib.decompress(base64.b64decode("eNqVVm1vGjkQ/p5f4TpStauDDeTSUkGS
 
 
 
-def _shell_response(filename):
+def _shell_response(filename, extra=""):
     shell = (BASE_DIR / filename).read_text(encoding="utf-8")
     # Bust Discord's cached hashed-bundle response without changing its route.
     # The replacement includes the closing quote, so an already-versioned URL
     # is not matched and cannot receive the version twice.
     for bundle in ("index-DZHMJUsJ.js", "index-BHe8WMvJ.js"):
         shell = shell.replace(
-            f'src="/assets/{bundle}"', f'src="/assets/{bundle}?v=20260906-3"'
+            f'src="/assets/{bundle}"', f'src="/assets/{bundle}?v=20260906-4"'
         ).replace(
-            f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-3"'
+            f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-4"'
         )
-    shell = shell.replace("</body>", _SHELL_NAV + "\n</body>")
+    shell = shell.replace("</body>", _SHELL_NAV + extra + "\n</body>")
     return web.Response(
         text=shell,
         content_type="text/html",
@@ -1413,7 +1324,7 @@ async def serve_qtcg(request):
 
 async def serve_war_room(request):
     """Each War Room alias serves its shell directly for Discord's proxy."""
-    return _shell_response("index.html")
+    return _shell_response("index.html", WAR_ROOM_CONTROL)
 
 
 _RESOURCES_PAGE = _zlib.decompress(base64.b64decode("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")).decode("utf-8")
@@ -1460,6 +1371,17 @@ async def serve_war_room_bundle(request):
         "https://diligent-eagerness-test.up.railway.app",
         "",
     ).replace('"/.proxy/railway"', '""')
+    old_mapper = 'status:a.status==="complete"?"complete":a.status==="paused"?"paused":"live"'
+    new_mapper = 'status:a.status==="active"?"live":a.status==="complete"?"complete":"paused"'
+    mapper_count = source.count(old_mapper)
+    # Guard the targeted production-build transform: exactly one known mapper
+    # must change, otherwise fail visibly rather than silently restoring LIVE.
+    if mapper_count != 1:
+        print("[war-room bundle] lifecycle mapper count=%s (expected 1)" % mapper_count)
+        raise web.HTTPInternalServerError(
+            text="War Room lifecycle mapper mismatch; deployment bundle changed"
+        )
+    source = source.replace(old_mapper, new_mapper, 1)
     return web.Response(
         text=source,
         content_type="text/javascript",
@@ -1467,7 +1389,44 @@ async def serve_war_room_bundle(request):
     )
 
 
-app = web.Application(middlewares=[request_diagnostics_middleware])
+draft_state, draft_action = create_handlers({
+    "cors": _cors,
+    "session": _draft_session,
+    "load": lambda session: _draft_load_shared(session),
+    "get": lambda session, path: _gh_get(session, path),
+    "put": lambda session, path, obj, sha, msg: _gh_put(
+        session, path, obj, sha, msg
+    ),
+    "normalize": _draft_normalize,
+    "public": _draft_public,
+    "turn": _draft_turn,
+    "auto": _draft_auto_player,
+    "record": _draft_record_pick,
+    "admin": _draft_is_admin,
+    "team": _draft_team_for_user,
+    "available": _draft_available,
+    "audit": _draft_audit,
+    "lifecycle": _draft_lifecycle,
+    "schedule": _draft_schedule_timestamp,
+    "path": DRAFT_PATH,
+    "cache": _DRAFT_CACHE,
+    "lock": _DRAFT_MUTATION_LOCK,
+})
+
+
+@web.middleware
+async def _draft_non_action_mutation_lock(request, handler):
+    """Serialize the remaining draft-file POST read/modify/write handlers."""
+    if request.method == "POST" and request.path in {
+            "/api/draft/players", "/api/resources/keep-cut"}:
+        async with _DRAFT_MUTATION_LOCK:
+            return await handler(request)
+    return await handler(request)
+
+
+app = web.Application(middlewares=[
+    request_diagnostics_middleware, _draft_non_action_mutation_lock,
+])
 
 # --- 1. API ROUTES (Must be registered first) ---
 app.router.add_post("/api/login", login)
