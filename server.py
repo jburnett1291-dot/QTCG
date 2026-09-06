@@ -36,7 +36,8 @@ from activity_diagnostics import (
     request_diagnostics_middleware,
     serve_diagnostics,
 )
-from unified_navigation import inject_navigation
+from spa_shell import SPA_HTML
+from discord_sdk_bundle import serve_discord_sdk
 
 CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
@@ -1311,7 +1312,6 @@ def _shell_response(filename, extra=""):
             f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-5"'
         )
     shell = shell.replace("</body>", extra + "\n</body>")
-    shell = inject_navigation(shell)
     return web.Response(
         text=shell,
         content_type="text/html",
@@ -1320,8 +1320,9 @@ def _shell_response(filename, extra=""):
 
 
 async def serve_qtcg(request):
-    """The card game is the primary Activity shell."""
-    return _shell_response("qtcg.html")
+    """The sole Activity document; aliases normalize in the client."""
+    return web.Response(text=SPA_HTML, content_type="text/html",
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 async def serve_war_room(request):
@@ -1341,11 +1342,7 @@ _RESOURCES_PAGE = _RESOURCES_PAGE.replace(
 
 
 async def serve_resources(request):
-    return web.Response(
-        text=inject_navigation(_RESOURCES_PAGE),
-        content_type="text/html",
-        headers={"Cache-Control": "no-store, max-age=0"},
-    )
+    return await serve_qtcg(request)
 
 
 async def serve_frontend_bundle(request):
@@ -1466,16 +1463,17 @@ app.router.add_options("/api/img", proxy_image)
 # redirects between Activity documents.
 app.router.add_get("/", serve_qtcg)
 app.router.add_get("/qtcg", serve_qtcg)
-app.router.add_get("/draft", serve_war_room)
-app.router.add_get("/war-room", serve_war_room)
-app.router.add_get("/warroom", serve_war_room)
-app.router.add_get("/warroom/war-room", serve_war_room)
+app.router.add_get("/draft", serve_qtcg)
+app.router.add_get("/war-room", serve_qtcg)
+app.router.add_get("/warroom", serve_qtcg)
+app.router.add_get("/warroom/war-room", serve_qtcg)
 app.router.add_get("/resources", serve_resources)
 app.router.add_get("/diagnostics", serve_diagnostics)
-app.router.add_get("/coach", serve_war_room)
-app.router.add_get("/director", serve_war_room)
+app.router.add_get("/coach", serve_qtcg)
+app.router.add_get("/director", serve_qtcg)
 app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
 app.router.add_get("/assets/index-BHe8WMvJ.js", serve_war_room_bundle)
+app.router.add_get("/assets/discord-embedded-sdk.js", serve_discord_sdk)
 
 app.router.add_static('/', path=str(BASE_DIR), name='static', show_index=False)
 app.router.add_static('/warroom/', path=str(BASE_DIR), name='warroom_static', show_index=False)
