@@ -1078,12 +1078,14 @@ async def open_pack(request):
 async def get_binder(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
-    try:
-        body = await request.json()
-    except Exception:
-        return _cors(web.json_response({"error": "bad request"}, status=400))
-
-    session_tok = body.get("session")
+    if request.method == "GET":
+        session_tok = request.query.get("session")
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            return _cors(web.json_response({"error": "bad request"}, status=400))
+        session_tok = body.get("session")
     if not session_tok:
         return _cors(web.json_response({"error": "Not authenticated. Let auto-login finish or open a pack first!"}, status=401))
 
@@ -1348,6 +1350,7 @@ app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_packs := open_pack)
 app.router.add_options("/api/openpack", open_pack)
 app.router.add_post("/api/binder", get_binder)
+app.router.add_get("/api/binder", get_binder)
 app.router.add_options("/api/binder", get_binder)
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
@@ -1358,6 +1361,33 @@ app.router.add_post("/api/draft/action", draft_action)
 app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
+
+# Discord's proxy can duplicate a path when a custom /api mapping targets a
+# URL that already contains /api. Keep these aliases so existing Activities
+# continue working while their mapping is being corrected.
+app.router.add_post("/api/api/login", login)
+app.router.add_options("/api/api/login", login)
+app.router.add_post("/api/api/starter", claim_starter)
+app.router.add_options("/api/api/starter", claim_starter)
+app.router.add_get("/api/api/starter_status", starter_status)
+app.router.add_get("/api/api/balance", get_balance)
+app.router.add_get("/api/api/lineup", get_lineup)
+app.router.add_post("/api/api/lineup", set_lineup)
+app.router.add_options("/api/api/lineup", set_lineup)
+app.router.add_post("/api/api/openpack", open_pack)
+app.router.add_options("/api/api/openpack", open_pack)
+app.router.add_post("/api/api/binder", get_binder)
+app.router.add_get("/api/api/binder", get_binder)
+app.router.add_options("/api/api/binder", get_binder)
+app.router.add_get("/api/api/health", health)
+app.router.add_get("/api/api/diag", diag)
+app.router.add_get("/api/api/cards", cards_debug)
+app.router.add_get("/api/api/draft/state", draft_state)
+app.router.add_get("/api/api/draft/export", draft_export)
+app.router.add_post("/api/api/draft/action", draft_action)
+app.router.add_options("/api/api/draft/action", draft_action)
+app.router.add_get("/api/api/img", proxy_image)
+app.router.add_options("/api/api/img", proxy_image)
 
 # Frontend routes must be registered before the static catch-all.
 # The legacy QTCG app owns the root and its original collection routes;
