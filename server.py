@@ -1267,8 +1267,12 @@ async def serve_qtcg(request):
 
 
 async def redirect_to_draft(request):
-    """Compatibility route for older QTCG links."""
-    raise web.HTTPFound("/draft")
+    """Serve the draft app directly for older war-room links.
+
+    Discord Activity mappings do not always follow a second same-origin
+    redirect, so compatibility URLs render the draft shell directly.
+    """
+    return await serve_index(request)
 
 
 async def serve_frontend_bundle(request):
