@@ -1285,13 +1285,10 @@ async def serve_frontend_bundle(request):
     mappings in production expose /api, so the app must use normal
     same-origin API paths instead of depending on that proxy prefix.
     """
-    bundle = BASE_DIR / "assets" / "index-Bd61woXI.js"
+    bundle = BASE_DIR / "assets" / "index-eVFa5fnZ.js"
     if not bundle.is_file():
         raise web.HTTPNotFound(text="Frontend bundle not found")
     source = bundle.read_text(encoding="utf-8").replace(
-        "https://diligent-eagerness-test.up.railway.app",
-        "",
-    ).replace(
         '"/.proxy/railway"',
         '""',
     )
@@ -1389,6 +1386,16 @@ app.router.add_options("/api/api/draft/action", draft_action)
 app.router.add_get("/api/api/img", proxy_image)
 app.router.add_options("/api/api/img", proxy_image)
 
+# A few Discord Activity clients preserve the root mapping for the document
+# but strip the /api segment from relative fetches. These aliases are
+# intentionally read/write compatible with the canonical API routes.
+app.router.add_post("/binder", get_binder)
+app.router.add_options("/binder", get_binder)
+app.router.add_get("/draft/state", draft_state)
+app.router.add_get("/draft/export", draft_export)
+app.router.add_post("/draft/action", draft_action)
+app.router.add_options("/draft/action", draft_action)
+
 # Frontend routes must be registered before the static catch-all.
 # The legacy QTCG app owns the root and its original collection routes;
 # the modern live draft room lives at /draft.
@@ -1406,6 +1413,7 @@ app.router.add_get("/draft", serve_index)
 app.router.add_get("/coach", redirect_to_draft)
 app.router.add_get("/director", redirect_to_draft)
 app.router.add_get("/assets/index-eVFa5fnZ.js", serve_frontend_bundle)
+app.router.add_get("/assets/index-BHe8WMvJ.js", serve_frontend_bundle)
 app.router.add_get("/assets/index-2GysHhWs.css", serve_frontend_styles)
 app.router.add_get("/assets/index-DZHMJUsJ.js", serve_legacy_bundle)
 app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
