@@ -23,7 +23,6 @@ import json
 import time
 import base64
 import random
-from pathlib import Path
 import aiohttp
 from aiohttp import web
 
@@ -31,7 +30,6 @@ CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
-BASE_DIR = Path(__file__).resolve().parent
 
 import re as _re
 
@@ -503,6 +501,107 @@ async def draft_action(request):
             return _cors(web.json_response({"error": "draft changed; refresh and retry"}, status=409))
         _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
     return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
+
+
+async def draft_players(request):
+    """Export or merge the prospect pool without replacing draft history."""
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+
+    body = {}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            return _cors(web.json_response({"error": "bad request"}, status=400))
+
+    sess = _draft_session(request, body)
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    uid = str(sess["id"])
+
+    async with aiohttp.ClientSession() as session:
+        draft_raw, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(draft_raw)
+
+        if request.method == "GET":
+            payload = {
+                "schema_version": 1,
+                "revision": int(draft.get("revision", 0)),
+                "players": list(draft.get("players", {}).values()),
+                "teams": list(draft.get("teams", [])),
+                "coaches": dict(draft.get("coaches", {})),
+                "exported_at": time.time(),
+            }
+            return _cors(web.json_response(payload, headers={
+                "Content-Disposition": 'attachment; filename="qspn_draft_players.json"',
+            }))
+
+        if not _draft_is_admin(uid):
+            return _cors(web.json_response(
+                {"error": "commissioner access required"}, status=403
+            ))
+
+        incoming = body.get("players", body)
+        if isinstance(incoming, list):
+            incoming = {
+                str(player.get("discord_id") or player.get("id") or
+                    player.get("gamertag") or index): player
+                for index, player in enumerate(incoming)
+                if isinstance(player, dict)
+            }
+        if not isinstance(incoming, dict):
+            return _cors(web.json_response(
+                {"error": "players must be an object or array"}, status=400
+            ))
+
+        players = draft.setdefault("players", {})
+        synced = 0
+        for player_id, raw_player in incoming.items():
+            if not isinstance(raw_player, dict):
+                continue
+            stable_id = str(
+                raw_player.get("discord_id") or raw_player.get("id") or player_id
+            )
+            existing = players.get(stable_id, {})
+            protected = {
+                key: existing[key]
+                for key in ("drafted_by", "pick_number", "drafted_at")
+                if key in existing
+            }
+            players[stable_id] = {
+                **existing,
+                **raw_player,
+                "discord_id": stable_id,
+                **protected,
+            }
+            synced += 1
+
+        if isinstance(body.get("teams"), list):
+            draft["teams"] = [str(team) for team in body["teams"] if str(team)]
+        if isinstance(body.get("coaches"), dict):
+            draft["coaches"] = {
+                str(team): str(coach)
+                for team, coach in body["coaches"].items()
+            }
+
+        _draft_audit(draft, "players_synced", uid, count=synced)
+        draft["revision"] = int(draft.get("revision", 0)) + 1
+        ok = await _gh_put(
+            session, DRAFT_PATH, draft, sha,
+            f"draft activity: synced {synced} players",
+        )
+        if not ok:
+            return _cors(web.json_response(
+                {"error": "draft changed; refresh and retry"}, status=409
+            ))
+        _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
+        return _cors(web.json_response({
+            "ok": True,
+            "synced": synced,
+            "revision": draft["revision"],
+            "draft": _draft_public(draft, uid),
+        }))
 
 
 # ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
@@ -1211,42 +1310,15 @@ async def proxy_image(request):
         except Exception as e:
             return _cors(web.json_response({"error": str(e)}, status=500))
 
-
+# --- Serve the frontend index.html ---
 async def serve_index(request):
-    """Serve the compiled QTCG frontend."""
-    return web.FileResponse(
-        BASE_DIR / "index.html",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-async def redirect_to_draft(request):
-    """Compatibility route for older QTCG links."""
-    raise web.HTTPFound("/draft")
-
-
-async def serve_frontend_bundle(request):
-    """Use same-origin API calls when this bundle runs directly on Railway.
-
-    The uploaded production bundle still contains the previous Railway
-    service URL. Discord-hosted requests keep their /.proxy/railway behavior;
-    normal browser requests should call this service instead.
-    """
-    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
-    if not bundle.is_file():
-        raise web.HTTPNotFound(text="Frontend bundle not found")
-    source = bundle.read_text(encoding="utf-8").replace(
-        "https://diligent-eagerness-test.up.railway.app",
-        "",
-    )
-    return web.Response(
-        text=source,
-        content_type="text/javascript",
-        headers={"Cache-Control": "no-cache"},
-    )
+    """Serve the War Room / QTCG single-page application frontend."""
+    return web.FileResponse('./index.html')
 
 
 app = web.Application()
+
+# --- 1. API ROUTES (Must be registered first) ---
 app.router.add_post("/api/login", login)
 app.router.add_post("/api/starter", claim_starter)
 app.router.add_options("/api/starter", claim_starter)
@@ -1266,19 +1338,28 @@ app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
 app.router.add_post("/api/draft/action", draft_action)
 app.router.add_options("/api/draft/action", draft_action)
+app.router.add_get("/api/draft/players", draft_players)
+app.router.add_post("/api/draft/players", draft_players)
+app.router.add_options("/api/draft/players", draft_players)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
 
-# Frontend routes must be registered before the static catch-all.
+# --- 2. FRONTEND & STATIC ROUTES ---
+# Serve main entry points to output the HTML frame
 app.router.add_get("/", serve_index)
-app.router.add_get("/war-room", redirect_to_draft)
-app.router.add_get("/warroom", redirect_to_draft)
-app.router.add_get("/warroom/war-room", redirect_to_draft)
+app.router.add_get("/war-room", serve_index)
+app.router.add_get("/warroom/war-room", serve_index)
 app.router.add_get("/draft", serve_index)
-app.router.add_get("/coach", redirect_to_draft)
-app.router.add_get("/director", redirect_to_draft)
-app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
-app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
+
+app.router.add_static('/', path='.', name='static', show_index=False)
+app.router.add_static('/warroom/', path='.', name='warroom_static', show_index=False)
+
+
+if __name__ == "__main__":
+    print(f"[qcl-pull-server] starting on :{PORT}, repo={GH_REPO}")
+    web.run_app(app, host="0.0.0.0", port=PORT)
+
+
 
 if __name__ == "__main__":
     print(f"[qcl-pull-server] starting on :{PORT}, repo={GH_REPO}")
