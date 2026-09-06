@@ -1434,11 +1434,27 @@ async def serve_frontend_bundle(request):
     source = bundle.read_text(encoding="utf-8").replace(
         "https://diligent-eagerness-test.up.railway.app",
         "",
-    )
+    ).replace('"/.proxy/railway"', '""')
     return web.Response(
         text=source,
         content_type="text/javascript",
-        headers={"Cache-Control": "no-cache"},
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+async def serve_war_room_bundle(request):
+    """Serve the War Room bundle with its API base on Discord's same origin."""
+    bundle = BASE_DIR / "assets" / "index-BHe8WMvJ.js"
+    if not bundle.is_file():
+        raise web.HTTPNotFound(text="Frontend bundle not found")
+    source = bundle.read_text(encoding="utf-8").replace(
+        "https://diligent-eagerness-test.up.railway.app",
+        "",
+    ).replace('"/.proxy/railway"', '""')
+    return web.Response(
+        text=source,
+        content_type="text/javascript",
+        headers={"Cache-Control": "no-store, max-age=0"},
     )
 
 
@@ -1489,6 +1505,7 @@ app.router.add_get("/diagnostics", serve_diagnostics)
 app.router.add_get("/coach", serve_war_room)
 app.router.add_get("/director", serve_war_room)
 app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
+app.router.add_get("/assets/index-BHe8WMvJ.js", serve_war_room_bundle)
 
 app.router.add_static('/', path=str(BASE_DIR), name='static', show_index=False)
 app.router.add_static('/warroom/', path=str(BASE_DIR), name='warroom_static', show_index=False)
