@@ -13,6 +13,20 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // The legacy QTCG bundle owns /draft as an in-app route. The modern
+      // War Room is a separate server shell, so make this handoff cross the
+      // document boundary instead of letting the old router consume it.
+      document.addEventListener("click", function (event) {
+        const target = event.target instanceof Element
+          ? event.target.closest('a[href="/draft"]')
+          : null;
+        if (!target) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        window.location.assign("/draft");
+      }, true);
+    </script>
     <script type="module" crossorigin src="/assets/index-DZHMJUsJ.js"></script>
   </body>
 </html>

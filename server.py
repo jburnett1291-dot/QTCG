@@ -1316,6 +1316,20 @@ async def serve_legacy_bundle(request):
     )
 
 
+async def serve_frontend_styles(request):
+    """Serve the draft-room stylesheet explicitly for Activity proxies."""
+    stylesheet = BASE_DIR / "assets" / "index-2GysHhWs.css"
+    if not stylesheet.is_file():
+        raise web.HTTPNotFound(text="Frontend stylesheet not found")
+    return web.FileResponse(
+        stylesheet,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Type": "text/css; charset=utf-8",
+        },
+    )
+
+
 app = web.Application()
 app.router.add_post("/api/login", login)
 app.router.add_post("/api/starter", claim_starter)
@@ -1357,6 +1371,7 @@ app.router.add_get("/draft", serve_index)
 app.router.add_get("/coach", redirect_to_draft)
 app.router.add_get("/director", redirect_to_draft)
 app.router.add_get("/assets/index-eVFa5fnZ.js", serve_frontend_bundle)
+app.router.add_get("/assets/index-2GysHhWs.css", serve_frontend_styles)
 app.router.add_get("/assets/index-DZHMJUsJ.js", serve_legacy_bundle)
 app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
 
