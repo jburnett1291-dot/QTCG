@@ -36,6 +36,7 @@ from activity_diagnostics import (
     request_diagnostics_middleware,
     serve_diagnostics,
 )
+from unified_navigation import inject_navigation
 
 CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
@@ -1305,11 +1306,12 @@ def _shell_response(filename, extra=""):
     # is not matched and cannot receive the version twice.
     for bundle in ("index-DZHMJUsJ.js", "index-BHe8WMvJ.js"):
         shell = shell.replace(
-            f'src="/assets/{bundle}"', f'src="/assets/{bundle}?v=20260906-4"'
+            f'src="/assets/{bundle}"', f'src="/assets/{bundle}?v=20260906-5"'
         ).replace(
-            f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-4"'
+            f'src="./assets/{bundle}"', f'src="./assets/{bundle}?v=20260906-5"'
         )
-    shell = shell.replace("</body>", _SHELL_NAV + extra + "\n</body>")
+    shell = shell.replace("</body>", extra + "\n</body>")
+    shell = inject_navigation(shell)
     return web.Response(
         text=shell,
         content_type="text/html",
@@ -1340,7 +1342,7 @@ _RESOURCES_PAGE = _RESOURCES_PAGE.replace(
 
 async def serve_resources(request):
     return web.Response(
-        text=_RESOURCES_PAGE,
+        text=inject_navigation(_RESOURCES_PAGE),
         content_type="text/html",
         headers={"Cache-Control": "no-store, max-age=0"},
     )
