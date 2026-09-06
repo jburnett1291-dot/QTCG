@@ -219,8 +219,7 @@ def _draft_default():
         "revision": 0, "status": "setup", "teams": [], "coaches": {},
         "players": {}, "order": [], "picks": [], "current_pick": 0,
         "pick_seconds": 90, "deadline_at": None, "paused_remaining": None,
-        "protected_picks": [], "next_pick_board": [], "trades": [], "audit_log": [],
-        "autosaved_at": None,
+        "protected_picks": [], "trades": [], "audit_log": [],
         "promo": None,
     }
 
@@ -385,7 +384,6 @@ async def draft_state(request):
                 if player:
                     _draft_record_pick(draft, player, None, "clock_auto_pick")
                     draft["revision"] = int(draft.get("revision", 0)) + 1
-                    draft["autosaved_at"] = time.time()
                     await _gh_put(
                         session, DRAFT_PATH, draft, sha,
                         f"draft activity: timeout pick #{turn['pick']}"
@@ -439,29 +437,6 @@ async def draft_action(request):
                 "updated_at": time.time(), "updated_by": uid,
             }
             _draft_audit(draft, "strategy_updated", uid, team=team)
-        elif action == "pin_player":
-            if not admin:
-                return _cors(web.json_response({"error": "commissioner access required"}, status=403))
-            requested = str(body.get("player_id") or body.get("player") or "")
-            player = next(
-                (p for player_key, p in draft.get("players", {}).items()
-                 if str(player_key) == requested
-                 or str(p.get("discord_id", "")) == requested
-                 or str(p.get("gamertag", "")) == requested
-                 or str(p.get("id", "")) == requested),
-                None,
-            )
-            if not player:
-                return _cors(web.json_response({"error": "player not found"}, status=404))
-            player_id = str(player.get("discord_id") or player.get("gamertag") or requested)
-            board = [str(value) for value in draft.setdefault("next_pick_board", [])]
-            if int(body.get("pinned", 1)):
-                if player_id not in board:
-                    board.append(player_id)
-            else:
-                board = [value for value in board if value != player_id]
-            draft["next_pick_board"] = board[:50]
-            _draft_audit(draft, "next_pick_board_updated", uid, player_id=player_id, pinned=player_id in board)
         elif not admin:
             return _cors(web.json_response({"error": "commissioner access required"}, status=403))
         elif action == "pause":
@@ -523,24 +498,11 @@ async def draft_action(request):
             return _cors(web.json_response({"error": "unknown action"}, status=400))
 
         draft["revision"] = int(draft.get("revision", 0)) + 1
-        draft["autosaved_at"] = time.time()
         ok = await _gh_put(session, DRAFT_PATH, draft, sha, f"draft activity: {action}")
         if not ok:
             return _cors(web.json_response({"error": "draft changed; refresh and retry"}, status=409))
         _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
     return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
-
-
-async def draft_export(request):
-    sess = _draft_session(request)
-    if not sess:
-        return _cors(web.json_response({"error": "not logged in"}, status=401))
-    async with aiohttp.ClientSession() as session:
-        draft, _ = await _draft_load_shared(session)
-    export = _draft_public(draft, sess["id"])
-    export["exported_at"] = time.time()
-    export["export_format"] = "qcl-draft-v1"
-    return _cors(web.json_response({"exported_at": export["exported_at"], "draft": export}))
 
 
 # ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
@@ -1078,14 +1040,12 @@ async def open_pack(request):
 async def get_binder(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
-    if request.method == "GET":
-        session_tok = request.query.get("session")
-    else:
-        try:
-            body = await request.json()
-        except Exception:
-            return _cors(web.json_response({"error": "bad request"}, status=400))
-        session_tok = body.get("session")
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response({"error": "bad request"}, status=400))
+
+    session_tok = body.get("session")
     if not session_tok:
         return _cors(web.json_response({"error": "Not authenticated. Let auto-login finish or open a pack first!"}, status=401))
 
@@ -1253,28 +1213,16 @@ async def proxy_image(request):
 
 
 async def serve_index(request):
-    """Serve the compiled draft-room frontend."""
+    """Serve the compiled QTCG frontend."""
     return web.FileResponse(
         BASE_DIR / "index.html",
         headers={"Cache-Control": "no-store"},
     )
 
 
-async def serve_qtcg(request):
-    """Serve the legacy QTCG collection app at the root and legacy routes."""
-    return web.FileResponse(
-        BASE_DIR / "qtcg.html",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
 async def redirect_to_draft(request):
-    """Serve the draft app directly for older war-room links.
-
-    Discord Activity mappings do not always follow a second same-origin
-    redirect, so compatibility URLs render the draft shell directly.
-    """
-    return await serve_index(request)
+    """Compatibility route for older QTCG links."""
+    raise web.HTTPFound("/draft")
 
 
 async def serve_frontend_bundle(request):
@@ -1285,10 +1233,13 @@ async def serve_frontend_bundle(request):
     mappings in production expose /api, so the app must use normal
     same-origin API paths instead of depending on that proxy prefix.
     """
-    bundle = BASE_DIR / "assets" / "index-eVFa5fnZ.js"
+    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
     if not bundle.is_file():
         raise web.HTTPNotFound(text="Frontend bundle not found")
     source = bundle.read_text(encoding="utf-8").replace(
+        "https://diligent-eagerness-test.up.railway.app",
+        "",
+    ).replace(
         '"/.proxy/railway"',
         '""',
     )
@@ -1296,41 +1247,6 @@ async def serve_frontend_bundle(request):
         text=source,
         content_type="text/javascript",
         headers={"Cache-Control": "no-store"},
-    )
-
-
-async def serve_legacy_bundle(request):
-    """Serve the original QTCG app with same-origin API calls."""
-    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
-    if not bundle.is_file():
-        raise web.HTTPNotFound(text="Legacy QTCG bundle not found")
-    source = bundle.read_text(encoding="utf-8").replace(
-        '"/.proxy/railway"',
-        '""',
-    )
-    return web.Response(
-        text=source,
-        content_type="text/javascript",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-async def serve_frontend_styles(request):
-    """Serve the draft stylesheet, with a legacy-bundle fallback."""
-    stylesheet = BASE_DIR / "assets" / "index-2GysHhWs.css"
-    if not stylesheet.is_file():
-        # Some Railway uploads preserved the HTML/JS files but omitted the
-        # newer hashed CSS asset. Reuse the CSS already shipped with the
-        # legacy bundle rather than returning a blank/error page.
-        stylesheet = BASE_DIR / "assets" / "index-CLPLACUh.css"
-    if not stylesheet.is_file():
-        raise web.HTTPNotFound(text="Frontend stylesheet not found")
-    return web.FileResponse(
-        stylesheet,
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Type": "text/css; charset=utf-8",
-        },
     )
 
 
@@ -1347,111 +1263,25 @@ app.router.add_options("/api/login", login)
 app.router.add_post("/api/openpack", open_packs := open_pack)
 app.router.add_options("/api/openpack", open_pack)
 app.router.add_post("/api/binder", get_binder)
-app.router.add_get("/api/binder", get_binder)
 app.router.add_options("/api/binder", get_binder)
 app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
-app.router.add_get("/api/draft/export", draft_export)
 app.router.add_post("/api/draft/action", draft_action)
 app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
 
-# Discord's proxy can duplicate a path when a custom /api mapping targets a
-# URL that already contains /api. Keep these aliases so existing Activities
-# continue working while their mapping is being corrected.
-app.router.add_post("/api/api/login", login)
-app.router.add_options("/api/api/login", login)
-app.router.add_post("/api/api/starter", claim_starter)
-app.router.add_options("/api/api/starter", claim_starter)
-app.router.add_get("/api/api/starter_status", starter_status)
-app.router.add_get("/api/api/balance", get_balance)
-app.router.add_get("/api/api/lineup", get_lineup)
-app.router.add_post("/api/api/lineup", set_lineup)
-app.router.add_options("/api/api/lineup", set_lineup)
-app.router.add_post("/api/api/openpack", open_pack)
-app.router.add_options("/api/api/openpack", open_pack)
-app.router.add_post("/api/api/binder", get_binder)
-app.router.add_get("/api/api/binder", get_binder)
-app.router.add_options("/api/api/binder", get_binder)
-app.router.add_get("/api/api/health", health)
-app.router.add_get("/api/api/diag", diag)
-app.router.add_get("/api/api/cards", cards_debug)
-app.router.add_get("/api/api/draft/state", draft_state)
-app.router.add_get("/api/api/draft/export", draft_export)
-app.router.add_post("/api/api/draft/action", draft_action)
-app.router.add_options("/api/api/draft/action", draft_action)
-app.router.add_get("/api/api/img", proxy_image)
-app.router.add_options("/api/api/img", proxy_image)
-
-# A few Discord Activity clients preserve the root mapping for the document
-# but strip the /api segment from relative fetches. These aliases are
-# intentionally read/write compatible with the canonical API routes.
-app.router.add_post("/binder", get_binder)
-app.router.add_options("/binder", get_binder)
-app.router.add_get("/draft/state", draft_state)
-app.router.add_get("/draft/export", draft_export)
-app.router.add_post("/draft/action", draft_action)
-app.router.add_options("/draft/action", draft_action)
-
-# Discord Activity URL mappings preserve their target path prefix. Register
-# equivalent API routes beneath each public Activity path so absolute frontend
-# requests such as /api/binder and /api/draft/state survive proxy rewriting.
-for _prefix in ("/qtcg",):
-    app.router.add_post(f"{_prefix}/api/login", login)
-    app.router.add_options(f"{_prefix}/api/login", login)
-    app.router.add_post(f"{_prefix}/api/starter", claim_starter)
-    app.router.add_options(f"{_prefix}/api/starter", claim_starter)
-    app.router.add_get(f"{_prefix}/api/starter_status", starter_status)
-    app.router.add_get(f"{_prefix}/api/balance", get_balance)
-    app.router.add_get(f"{_prefix}/api/lineup", get_lineup)
-    app.router.add_post(f"{_prefix}/api/lineup", set_lineup)
-    app.router.add_options(f"{_prefix}/api/lineup", set_lineup)
-    app.router.add_post(f"{_prefix}/api/openpack", open_pack)
-    app.router.add_options(f"{_prefix}/api/openpack", open_pack)
-    app.router.add_post(f"{_prefix}/api/binder", get_binder)
-    app.router.add_get(f"{_prefix}/api/binder", get_binder)
-    app.router.add_options(f"{_prefix}/api/binder", get_binder)
-    app.router.add_get(f"{_prefix}/api/cards", cards_debug)
-    app.router.add_get(f"{_prefix}/api/img", proxy_image)
-    app.router.add_options(f"{_prefix}/api/img", proxy_image)
-
-for _prefix in ("/warroom", "/war-room", "/warroom/war-room"):
-    app.router.add_get(f"{_prefix}/api/draft/state", draft_state)
-    app.router.add_get(f"{_prefix}/api/draft/export", draft_export)
-    app.router.add_post(f"{_prefix}/api/draft/action", draft_action)
-    app.router.add_options(f"{_prefix}/api/draft/action", draft_action)
-    app.router.add_get(f"{_prefix}/api/img", proxy_image)
-    app.router.add_options(f"{_prefix}/api/img", proxy_image)
-
 # Frontend routes must be registered before the static catch-all.
-# The legacy QTCG app owns the root and its original collection routes;
-# the modern live draft room lives at /draft.
-app.router.add_get("/", serve_qtcg)
-app.router.add_get("/starter", serve_qtcg)
-app.router.add_get("/packs", serve_qtcg)
-app.router.add_get("/binder", serve_qtcg)
-app.router.add_get("/lineup", serve_qtcg)
-app.router.add_get("/qtcg", serve_qtcg)
-app.router.add_post("/qtcg", serve_qtcg)
-app.router.add_options("/qtcg", serve_qtcg)
-app.router.add_get("/qtcg/", serve_qtcg)
-app.router.add_post("/qtcg/", serve_qtcg)
-app.router.add_options("/qtcg/", serve_qtcg)
+app.router.add_get("/", serve_index)
 app.router.add_get("/war-room", redirect_to_draft)
-app.router.add_post("/war-room", redirect_to_draft)
 app.router.add_get("/warroom", redirect_to_draft)
-app.router.add_post("/warroom", redirect_to_draft)
 app.router.add_get("/warroom/war-room", redirect_to_draft)
 app.router.add_get("/draft", serve_index)
 app.router.add_get("/coach", redirect_to_draft)
 app.router.add_get("/director", redirect_to_draft)
-app.router.add_get("/assets/index-eVFa5fnZ.js", serve_frontend_bundle)
-app.router.add_get("/assets/index-BHe8WMvJ.js", serve_frontend_bundle)
-app.router.add_get("/assets/index-2GysHhWs.css", serve_frontend_styles)
-app.router.add_get("/assets/index-DZHMJUsJ.js", serve_legacy_bundle)
+app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
 app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
 
 if __name__ == "__main__":
