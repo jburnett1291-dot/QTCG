@@ -1215,7 +1215,7 @@ async def proxy_image(request):
 async def serve_index(request):
     """Serve the compiled QTCG frontend."""
     return web.FileResponse(
-        BASE_DIR / "index.html",
+        BASE_DIR / "qtcg.html",
         headers={"Cache-Control": "no-store"},
     )
 
