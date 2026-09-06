@@ -219,7 +219,8 @@ def _draft_default():
         "revision": 0, "status": "setup", "teams": [], "coaches": {},
         "players": {}, "order": [], "picks": [], "current_pick": 0,
         "pick_seconds": 90, "deadline_at": None, "paused_remaining": None,
-        "protected_picks": [], "trades": [], "audit_log": [],
+        "protected_picks": [], "next_pick_board": [], "trades": [], "audit_log": [],
+        "autosaved_at": None,
         "promo": None,
     }
 
@@ -384,6 +385,7 @@ async def draft_state(request):
                 if player:
                     _draft_record_pick(draft, player, None, "clock_auto_pick")
                     draft["revision"] = int(draft.get("revision", 0)) + 1
+                    draft["autosaved_at"] = time.time()
                     await _gh_put(
                         session, DRAFT_PATH, draft, sha,
                         f"draft activity: timeout pick #{turn['pick']}"
@@ -437,6 +439,29 @@ async def draft_action(request):
                 "updated_at": time.time(), "updated_by": uid,
             }
             _draft_audit(draft, "strategy_updated", uid, team=team)
+        elif action == "pin_player":
+            if not admin:
+                return _cors(web.json_response({"error": "commissioner access required"}, status=403))
+            requested = str(body.get("player_id") or body.get("player") or "")
+            player = next(
+                (p for player_key, p in draft.get("players", {}).items()
+                 if str(player_key) == requested
+                 or str(p.get("discord_id", "")) == requested
+                 or str(p.get("gamertag", "")) == requested
+                 or str(p.get("id", "")) == requested),
+                None,
+            )
+            if not player:
+                return _cors(web.json_response({"error": "player not found"}, status=404))
+            player_id = str(player.get("discord_id") or player.get("gamertag") or requested)
+            board = [str(value) for value in draft.setdefault("next_pick_board", [])]
+            if int(body.get("pinned", 1)):
+                if player_id not in board:
+                    board.append(player_id)
+            else:
+                board = [value for value in board if value != player_id]
+            draft["next_pick_board"] = board[:50]
+            _draft_audit(draft, "next_pick_board_updated", uid, player_id=player_id, pinned=player_id in board)
         elif not admin:
             return _cors(web.json_response({"error": "commissioner access required"}, status=403))
         elif action == "pause":
@@ -498,11 +523,24 @@ async def draft_action(request):
             return _cors(web.json_response({"error": "unknown action"}, status=400))
 
         draft["revision"] = int(draft.get("revision", 0)) + 1
+        draft["autosaved_at"] = time.time()
         ok = await _gh_put(session, DRAFT_PATH, draft, sha, f"draft activity: {action}")
         if not ok:
             return _cors(web.json_response({"error": "draft changed; refresh and retry"}, status=409))
         _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
     return _cors(web.json_response({"ok": True, "draft": _draft_public(draft, uid)}))
+
+
+async def draft_export(request):
+    sess = _draft_session(request)
+    if not sess:
+        return _cors(web.json_response({"error": "not logged in"}, status=401))
+    async with aiohttp.ClientSession() as session:
+        draft, _ = await _draft_load_shared(session)
+    export = _draft_public(draft, sess["id"])
+    export["exported_at"] = time.time()
+    export["export_format"] = "qcl-draft-v1"
+    return _cors(web.json_response({"exported_at": export["exported_at"], "draft": export}))
 
 
 # ── GitHub as the shared save (read + write fantasy_save.json) ──────────────
@@ -1226,23 +1264,27 @@ async def redirect_to_draft(request):
 
 
 async def serve_frontend_bundle(request):
-    """Use same-origin API calls when this bundle runs directly on Railway.
+    """Use same-origin API calls in both Railway and Discord Activity mode.
 
     The uploaded production bundle still contains the previous Railway
-    service URL. Discord-hosted requests keep their /.proxy/railway behavior;
-    normal browser requests should call this service instead.
+    service URL and a Replit-specific /.proxy/railway prefix. Discord URL
+    mappings in production expose /api, so the app must use normal
+    same-origin API paths instead of depending on that proxy prefix.
     """
-    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
+    bundle = BASE_DIR / "assets" / "index-Bd61woXI.js"
     if not bundle.is_file():
         raise web.HTTPNotFound(text="Frontend bundle not found")
     source = bundle.read_text(encoding="utf-8").replace(
         "https://diligent-eagerness-test.up.railway.app",
         "",
+    ).replace(
+        '"/.proxy/railway"',
+        '""',
     )
     return web.Response(
         text=source,
         content_type="text/javascript",
-        headers={"Cache-Control": "no-cache"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -1264,6 +1306,7 @@ app.router.add_get("/api/health", health)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
+app.router.add_get("/api/draft/export", draft_export)
 app.router.add_post("/api/draft/action", draft_action)
 app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/api/img", proxy_image)
@@ -1277,7 +1320,7 @@ app.router.add_get("/warroom/war-room", redirect_to_draft)
 app.router.add_get("/draft", serve_index)
 app.router.add_get("/coach", redirect_to_draft)
 app.router.add_get("/director", redirect_to_draft)
-app.router.add_get("/assets/index-DZHMJUsJ.js", serve_frontend_bundle)
+app.router.add_get("/assets/index-Bd61woXI.js", serve_frontend_bundle)
 app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
 
 if __name__ == "__main__":
