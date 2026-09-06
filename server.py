@@ -1251,9 +1251,17 @@ async def proxy_image(request):
 
 
 async def serve_index(request):
-    """Serve the compiled QTCG frontend."""
+    """Serve the compiled draft-room frontend."""
     return web.FileResponse(
         BASE_DIR / "index.html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def serve_qtcg(request):
+    """Serve the legacy QTCG collection app at the root and legacy routes."""
+    return web.FileResponse(
+        BASE_DIR / "qtcg.html",
         headers={"Cache-Control": "no-store"},
     )
 
@@ -1278,6 +1286,22 @@ async def serve_frontend_bundle(request):
         "https://diligent-eagerness-test.up.railway.app",
         "",
     ).replace(
+        '"/.proxy/railway"',
+        '""',
+    )
+    return web.Response(
+        text=source,
+        content_type="text/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def serve_legacy_bundle(request):
+    """Serve the original QTCG app with same-origin API calls."""
+    bundle = BASE_DIR / "assets" / "index-DZHMJUsJ.js"
+    if not bundle.is_file():
+        raise web.HTTPNotFound(text="Legacy QTCG bundle not found")
+    source = bundle.read_text(encoding="utf-8").replace(
         '"/.proxy/railway"',
         '""',
     )
@@ -1313,14 +1337,23 @@ app.router.add_get("/api/img", proxy_image)
 app.router.add_options("/api/img", proxy_image)
 
 # Frontend routes must be registered before the static catch-all.
-app.router.add_get("/", serve_index)
+# The legacy QTCG app owns the root and its original collection routes;
+# the modern live draft room lives at /draft.
+app.router.add_get("/", serve_qtcg)
+app.router.add_get("/starter", serve_qtcg)
+app.router.add_get("/packs", serve_qtcg)
+app.router.add_get("/binder", serve_qtcg)
+app.router.add_get("/lineup", serve_qtcg)
+app.router.add_get("/qtcg", serve_qtcg)
+app.router.add_get("/qtcg/", serve_qtcg)
 app.router.add_get("/war-room", redirect_to_draft)
 app.router.add_get("/warroom", redirect_to_draft)
 app.router.add_get("/warroom/war-room", redirect_to_draft)
 app.router.add_get("/draft", serve_index)
 app.router.add_get("/coach", redirect_to_draft)
 app.router.add_get("/director", redirect_to_draft)
-app.router.add_get("/assets/index-Bd61woXI.js", serve_frontend_bundle)
+app.router.add_get("/assets/index-eVFa5fnZ.js", serve_frontend_bundle)
+app.router.add_get("/assets/index-DZHMJUsJ.js", serve_legacy_bundle)
 app.router.add_static("/", path=str(BASE_DIR), name="static", show_index=False)
 
 if __name__ == "__main__":
