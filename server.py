@@ -1317,8 +1317,13 @@ async def serve_legacy_bundle(request):
 
 
 async def serve_frontend_styles(request):
-    """Serve the draft-room stylesheet explicitly for Activity proxies."""
+    """Serve the draft stylesheet, with a legacy-bundle fallback."""
     stylesheet = BASE_DIR / "assets" / "index-2GysHhWs.css"
+    if not stylesheet.is_file():
+        # Some Railway uploads preserved the HTML/JS files but omitted the
+        # newer hashed CSS asset. Reuse the CSS already shipped with the
+        # legacy bundle rather than returning a blank/error page.
+        stylesheet = BASE_DIR / "assets" / "index-CLPLACUh.css"
     if not stylesheet.is_file():
         raise web.HTTPNotFound(text="Frontend stylesheet not found")
     return web.FileResponse(
