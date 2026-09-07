@@ -27,6 +27,7 @@ import asyncio
 import datetime as _datetime
 import socket
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 import aiohttp
 from aiohttp import web
 from draft_operations import create_handlers
@@ -139,23 +140,32 @@ def _card_img_from_catalog(name, cat):
     want_loose = _slug_loose(name)
     if not want:
         return None
-    # 1) exact filename == player
+    def proxied(raw_url):
+        # Card URLs are consumed inside Discord's Activity CSP, where direct
+        # raw.githubusercontent.com loads are not reliable.  Catalog URLs are
+        # always raw URLs, but keep this idempotent for callers/tests.
+        if raw_url.startswith("/api/img?"):
+            return raw_url
+        return "/api/img?url=" + quote(raw_url, safe="")
+
+    # Metadata is the canonical player alias (award filenames are not player
+    # names), so it intentionally wins over an accidental filename match.
+    if want in cat["by_player"]:
+        return proxied(cat["by_player"][want])
+    if want_loose in cat["by_player"]:
+        return proxied(cat["by_player"][want_loose])
+    # 2) exact filename == player
     for stem_slug, stem_loose, url in cat["stems"]:
         if stem_slug == want:
-            return url
-    # 2) meta.json player match (exact or loose)
-    if want in cat["by_player"]:
-        return cat["by_player"][want]
-    if want_loose in cat["by_player"]:
-        return cat["by_player"][want_loose]
+            return proxied(url)
     # 3) loose filename match (IIHurz ~ IIIHurz)
     for stem_slug, stem_loose, url in cat["stems"]:
         if stem_loose == want_loose:
-            return url
+            return proxied(url)
     # 4) award card containing the name (loose)
     for stem_slug, stem_loose, url in cat["stems"]:
         if want_loose in stem_loose:
-            return url
+            return proxied(url)
     return None
 
 
@@ -1272,7 +1282,9 @@ async def proxy_image(request):
     if request.method == "OPTIONS":
         return _cors(web.Response())
     url = request.query.get("url")
-    if not url or not url.startswith("https://raw.githubusercontent.com/"):
+    parsed = urlsplit(url or "")
+    if (parsed.scheme != "https" or parsed.netloc != "raw.githubusercontent.com"
+            or parsed.username or parsed.password or parsed.port):
         return _cors(web.json_response({"error": "Bad URL"}, status=400))
     
     headers = {}
@@ -1281,12 +1293,18 @@ async def proxy_image(request):
         
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(url, headers=headers) as r:
+            async with session.get(url, headers=headers, allow_redirects=False) as r:
                 if r.status != 200:
                     return _cors(web.Response(status=r.status))
                 data = await r.read()
-                ctype = r.headers.get("Content-Type", "image/png")
-                resp = web.Response(body=data, content_type=ctype)
+                # aiohttp's content_type argument rejects values with
+                # parameters; preserve valid upstream image types exactly.
+                ctype = r.headers.get("Content-Type", "").split(";", 1)[0].strip()
+                if not ctype.lower().startswith("image/"):
+                    ctype = "image/png"
+                resp = web.Response(body=data, content_type=ctype, headers={
+                    "Cache-Control": "public, max-age=86400",
+                })
                 return _cors(resp)
         except Exception as e:
             return _cors(web.json_response({"error": str(e)}, status=500))
