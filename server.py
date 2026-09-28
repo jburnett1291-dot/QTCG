@@ -364,9 +364,12 @@ def _draft_available(draft):
 
 
 def _draft_rank(player):
-    for key in ("ovr", "overall", "rating", "rank_score"):
+    for key in ("rank_score", "ovr", "overall", "rating"):
+        value = player.get(key)
+        if value is None or value == "":
+            continue
         try:
-            return float(player.get(key, 0) or 0)
+            return float(value)
         except (TypeError, ValueError):
             continue
     return 1.0 if player.get("eligible", True) else 0.0
@@ -516,6 +519,234 @@ async def draft_players(request):
         return _cors(web.json_response({
             "ok": True,
             "synced": synced,
+            "revision": draft["revision"],
+            "draft": _draft_public(draft, uid),
+        }))
+
+
+async def draft_setup(request):
+    """Configure a one-GM-per-team draft order before the first pick."""
+    if request.method == "OPTIONS":
+        return _cors(web.Response())
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(web.json_response(
+            {"error": "bad request"}, status=400
+        ))
+    if not isinstance(body, dict):
+        return _cors(web.json_response(
+            {"error": "request body must be an object"}, status=400
+        ))
+
+    sess = _draft_session(request, body)
+    if not sess:
+        return _cors(web.json_response(
+            {"error": "not logged in"}, status=401
+        ))
+    uid = str(sess["id"])
+    if not _draft_is_admin(uid):
+        return _cors(web.json_response(
+            {"error": "commissioner access required"}, status=403
+        ))
+
+    raw_teams = body.get("teams")
+    raw_coaches = body.get("coaches")
+    if not isinstance(raw_teams, list) or not isinstance(raw_coaches, dict):
+        return _cors(web.json_response(
+            {"error": "teams must be an array and coaches an object"},
+            status=400,
+        ))
+
+    teams = []
+    seen_names = set()
+    for raw_team in raw_teams:
+        team = str(raw_team or "").strip()
+        if not team or len(team) > 80:
+            return _cors(web.json_response(
+                {"error": "team names must be 1-80 characters"},
+                status=400,
+            ))
+        key = team.casefold()
+        if key in seen_names:
+            return _cors(web.json_response(
+                {"error": "team names must be unique"},
+                status=400,
+            ))
+        seen_names.add(key)
+        teams.append(team)
+    if not teams or len(teams) > 50:
+        return _cors(web.json_response(
+            {"error": "configure between 1 and 50 teams"},
+            status=400,
+        ))
+
+    coaches = {
+        str(team).strip(): str(owner_id).strip()
+        for team, owner_id in raw_coaches.items()
+    }
+    if set(coaches) != set(teams):
+        return _cors(web.json_response(
+            {"error": "each team must have exactly one mapped GM"},
+            status=400,
+        ))
+    coach_ids = list(coaches.values())
+    if any(not coach_id.isdigit() for coach_id in coach_ids):
+        return _cors(web.json_response(
+            {"error": "every GM mapping must use a valid Discord user ID"},
+            status=400,
+        ))
+    if len(set(coach_ids)) != len(coach_ids):
+        return _cors(web.json_response(
+            {"error": "a GM can be mapped to only one team"},
+            status=400,
+        ))
+
+    raw_rounds = body.get("rounds")
+    if isinstance(raw_rounds, bool):
+        return _cors(web.json_response(
+            {"error": "rounds must be a whole number"}, status=400
+        ))
+    try:
+        rounds = int(raw_rounds)
+    except (TypeError, ValueError):
+        return _cors(web.json_response(
+            {"error": "rounds must be a whole number"}, status=400
+        ))
+    if str(rounds) != str(raw_rounds).strip() or rounds < 1:
+        return _cors(web.json_response(
+            {"error": "rounds must be a positive whole number"},
+            status=400,
+        ))
+
+    raw_seconds = body.get("pick_seconds", 60)
+    if isinstance(raw_seconds, bool):
+        return _cors(web.json_response(
+            {"error": "pick_seconds must be a whole number"}, status=400
+        ))
+    try:
+        pick_seconds = int(raw_seconds)
+    except (TypeError, ValueError):
+        return _cors(web.json_response(
+            {"error": "pick_seconds must be a whole number"}, status=400
+        ))
+    if (
+        str(pick_seconds) != str(raw_seconds).strip()
+        or not 15 <= pick_seconds <= 300
+    ):
+        return _cors(web.json_response(
+            {"error": "pick_seconds must be between 15 and 300"},
+            status=400,
+        ))
+
+    snake = body.get("snake", True)
+    if not isinstance(snake, bool):
+        return _cors(web.json_response(
+            {"error": "snake must be true or false"}, status=400
+        ))
+
+    async with aiohttp.ClientSession() as session:
+        draft_raw, sha = await _gh_get(session, DRAFT_PATH)
+        draft = _draft_normalize(draft_raw)
+
+        if draft.get("status") not in {"setup", "stopped"}:
+            return _cors(web.json_response(
+                {"error": "draft order can only be configured before start"},
+                status=409,
+            ))
+        if draft.get("picks"):
+            return _cors(web.json_response(
+                {"error": "draft order cannot change after a pick"},
+                status=409,
+            ))
+        try:
+            current_pick = int(draft.get("current_pick", 0) or 0)
+        except (TypeError, ValueError):
+            current_pick = -1
+        if current_pick != 0:
+            return _cors(web.json_response(
+                {"error": "draft order cannot change after the first pick"},
+                status=409,
+            ))
+
+        players = draft.get("players", {})
+        if not isinstance(players, dict):
+            players = {}
+        eligible_count = sum(
+            1 for player in players.values()
+            if isinstance(player, dict)
+            and not player.get("drafted_by")
+            and player.get("eligible", True)
+        )
+        max_rounds = eligible_count // len(teams)
+        if rounds > max_rounds:
+            return _cors(web.json_response({
+                "error": (
+                    f"not enough eligible prospects for {rounds} rounds; "
+                    f"{eligible_count} available for {len(teams)} teams "
+                    f"(maximum {max_rounds} complete rounds)"
+                ),
+                "eligible_players": eligible_count,
+                "maximum_rounds": max_rounds,
+            }, status=400))
+
+        order = []
+        pick_number = 1
+        for round_number in range(1, rounds + 1):
+            round_teams = (
+                teams if not snake or round_number % 2
+                else list(reversed(teams))
+            )
+            for team in round_teams:
+                order.append({
+                    "pick": pick_number,
+                    "round": round_number,
+                    "team": team,
+                })
+                pick_number += 1
+
+        draft["teams"] = teams
+        draft["coaches"] = coaches
+        draft["order"] = order
+        draft["current_pick"] = 0
+        draft["picks"] = []
+        draft["pick_seconds"] = pick_seconds
+        draft["deadline_at"] = None
+        draft["paused_remaining"] = None
+        draft["scheduled_at"] = None
+        draft["started_at"] = None
+        draft["stopped_at"] = None
+        draft["protected_picks"] = []
+        draft["trades"] = []
+        draft["promo"] = None
+        _draft_lifecycle(draft, "setup", uid)
+        _draft_audit(
+            draft,
+            "draft_configured",
+            uid,
+            teams=len(teams),
+            rounds=rounds,
+            picks=len(order),
+            pick_seconds=pick_seconds,
+            snake=snake,
+        )
+        draft["revision"] = int(draft.get("revision", 0)) + 1
+        ok = await _gh_put(
+            session,
+            DRAFT_PATH,
+            draft,
+            sha,
+            f"draft activity: configured {len(teams)} teams, {rounds} rounds",
+        )
+        if not ok:
+            return _cors(web.json_response(
+                {"error": "draft changed; refresh and retry"},
+                status=409,
+            ))
+        _DRAFT_CACHE.update({"t": time.time(), "draft": draft})
+        return _cors(web.json_response({
+            "ok": True,
             "revision": draft["revision"],
             "draft": _draft_public(draft, uid),
         }))
@@ -1348,7 +1579,8 @@ draft_state, draft_action = create_handlers({
 async def _draft_non_action_mutation_lock(request, handler):
     """Serialize the remaining draft-file POST read/modify/write handlers."""
     if request.method == "POST" and request.path in {
-            "/api/draft/players", "/api/resources/keep-cut"}:
+            "/api/draft/players", "/api/draft/setup",
+            "/api/resources/keep-cut"}:
         async with _DRAFT_MUTATION_LOCK:
             return await handler(request)
     return await handler(request)
@@ -1377,6 +1609,8 @@ app.router.add_get("/api/activity-diagnostics", activity_diagnostics)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
+app.router.add_post("/api/draft/setup", draft_setup)
+app.router.add_options("/api/draft/setup", draft_setup)
 app.router.add_post("/api/draft/action", draft_action)
 app.router.add_options("/api/draft/action", draft_action)
 app.router.add_get("/api/draft/players", draft_players)
