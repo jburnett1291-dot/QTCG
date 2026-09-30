@@ -12,7 +12,9 @@ ENV VARS (set these in Railway -> Variables):
   DISCORD_CLIENT_ID       = 1498101411894919331
   DISCORD_CLIENT_SECRET   = <Developer Portal -> OAuth2>
   GITHUB_TOKEN            = <same token the bot uses, repo scope>
-  GITHUB_REPO            = jburnett1291-dot/SPAM_HUB
+  GITHUB_REPO            = jburnett1291-dot/QCL (the default; an explicit value overrides it)
+  QCL_SIGNING_SECRET     = <same random 32+ character secret used by Hub and bot>
+  DRAFT_ADMIN_IDS        = comma-separated commissioner Discord IDs (OWNER_ID is the fallback)
   SAVE_PATH             = fantasy_save.json      (optional, this is default)
   POOL_PATH             = fantasy_market.json    (optional; where names+rarity live)
   PORT                  = (Railway sets this automatically)
@@ -42,7 +44,7 @@ from discord_sdk_bundle import serve_discord_sdk
 CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GH_REPO = os.environ.get("GITHUB_REPO", "jburnett1291-dot/SPAM_HUB")
+GH_REPO = os.environ.get("GITHUB_REPO", "").strip() or "jburnett1291-dot/QCL"
 BASE_DIR = Path(__file__).resolve().parent
 
 import re as _re
@@ -189,10 +191,19 @@ import hmac as _hmac
 import hashlib as _hashlib
 import base64 as _b64
 
-_SESSION_SECRET = os.environ.get("QCL_SIGNING_SECRET", CLIENT_SECRET or "change-me")
+_SESSION_SECRET = os.environ.get("QCL_SIGNING_SECRET", "").strip()
+
+
+def _session_secret_is_usable():
+    """Never sign or accept sessions with a missing or weak shared secret."""
+    return len(_SESSION_SECRET.encode("utf-8")) >= 32
 
 
 def _make_session(uid, name, avatar):
+    if not _session_secret_is_usable():
+        raise RuntimeError(
+            "QCL_SIGNING_SECRET must be configured with at least 32 characters."
+        )
     payload = _b64.urlsafe_b64encode(
         json.dumps({"id": uid, "name": name, "avatar": avatar,
                     "exp": time.time() + 60*60*6}).encode()).decode().rstrip("=")
@@ -202,6 +213,8 @@ def _make_session(uid, name, avatar):
 
 
 def _read_session(tok):
+    if not _session_secret_is_usable():
+        return None
     try:
         payload, sig = tok.split(".", 1)
         good = _hmac.new(_SESSION_SECRET.encode(), payload.encode(),
@@ -498,7 +511,28 @@ async def draft_players(request):
             synced += 1
 
         if isinstance(body.get("teams"), list):
-            draft["teams"] = [str(team) for team in body["teams"] if str(team)]
+            imported_teams = [str(team) for team in body["teams"] if str(team)]
+            current_teams = [str(team) for team in draft.get("teams", [])]
+            if (
+                imported_teams != current_teams
+                and (
+                    draft.get("picks")
+                    or draft.get("order")
+                    or str(draft.get("status") or "") in {
+                        "active", "paused", "complete", "scheduled"
+                    }
+                )
+            ):
+                return _cors(web.json_response(
+                    {
+                        "error": (
+                            "team order is locked after setup; keep the existing teams "
+                            "unchanged when syncing players and GM assignments"
+                        )
+                    },
+                    status=409,
+                ))
+            draft["teams"] = imported_teams
         if isinstance(body.get("coaches"), dict):
             draft["coaches"] = {
                 str(team): str(coach)
