@@ -14,7 +14,7 @@ ENV VARS (set these in Railway -> Variables):
   GITHUB_TOKEN            = <same token the bot uses, repo scope>
   GITHUB_REPO            = jburnett1291-dot/QCL (the default; an explicit value overrides it)
   QCL_SIGNING_SECRET     = <same random 32+ character secret used by Hub and bot>
-  DRAFT_ADMIN_IDS        = comma-separated commissioner Discord IDs (OWNER_ID is the fallback)
+  Commissioner access is fixed to the two IDs in _DRAFT_ADMIN_IDS below
   SAVE_PATH             = fantasy_save.json      (optional, this is default)
   POOL_PATH             = fantasy_market.json    (optional; where names+rarity live)
   PORT                  = (Railway sets this automatically)
@@ -176,10 +176,12 @@ OWNER_ID = os.environ.get("OWNER_ID", "")  # Discord id with unlimited coins / f
 PACK_COST = int(os.environ.get("PACK_COST", "10"))  # base pack cost in coins
 POOL_PATH = os.environ.get("POOL_PATH", "fantasy_market.json")
 DRAFT_PATH = os.environ.get("DRAFT_PATH", "qcl_draft_activity.json")
-_DRAFT_ADMIN_IDS = {
-    item.strip() for item in os.environ.get("DRAFT_ADMIN_IDS", OWNER_ID).split(",")
-    if item.strip()
-}
+# Server-enforced allowlist. Keep Discord snowflakes as strings.
+# No environment override is honored: only these two IDs receive commissioner access.
+_DRAFT_ADMIN_IDS = frozenset({
+    "720424755391365151",
+    "1337614287920959609",
+})
 PORT = int(os.environ.get("PORT", "8787"))
 
 # odds MUST match the bot's TVT_ODDS / TVT_PACK_SIZE
