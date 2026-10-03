@@ -33,6 +33,10 @@ from urllib.parse import quote, urlsplit
 import aiohttp
 from aiohttp import web
 from draft_operations import create_handlers
+from qcl_seasons import (
+    PUBLIC_QCL_REPO,
+    create_handlers as create_qcl_season_handlers,
+)
 from activity_diagnostics import (
     activity_diagnostics,
     request_diagnostics_middleware,
@@ -46,6 +50,7 @@ CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "").strip() or "jburnett1291-dot/QCL"
 BASE_DIR = Path(__file__).resolve().parent
+QCL_HUB_PATH = BASE_DIR / "qcl_hub.html"
 
 import re as _re
 
@@ -1578,8 +1583,23 @@ async def proxy_image(request):
 
 async def serve_qtcg(request):
     """The sole Activity document; aliases normalize in the client."""
-    return web.Response(text=SPA_HTML, content_type="text/html",
+    hub_link = (
+        '<a href="/qcl" aria-label="Open QCL League Hub" '
+        'style="display:inline-flex;align-items:center;justify-content:center;'
+        'padding:8px 12px;border-radius:9px;margin-left:6px;'
+        'background:#17212b;color:#f5f8fb;font-weight:700;'
+        'text-decoration:none;border:1px solid #34404c">QCL Hub</a>'
+    )
+    html = SPA_HTML.replace("</nav>", hub_link + "</nav>", 1)
+    return web.Response(text=html, content_type="text/html",
                         headers={"Cache-Control": "no-store, max-age=0"})
+
+async def serve_qcl_hub(request):
+    return web.Response(
+        text=QCL_HUB_PATH.read_text(encoding="utf-8"),
+        content_type="text/html",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 async def serve_resources(request):
@@ -1609,6 +1629,14 @@ draft_state, draft_action = create_handlers({
     "cache": _DRAFT_CACHE,
     "lock": _DRAFT_MUTATION_LOCK,
 })
+
+qcl_season_handlers = create_qcl_season_handlers(
+    github_repo=PUBLIC_QCL_REPO,
+    github_token=GH_TOKEN,
+    session_reader=_draft_session,
+    admin_check=_draft_is_admin,
+    cors=_cors,
+)
 
 
 @web.middleware
@@ -1645,6 +1673,11 @@ app.router.add_get("/api/activity-diagnostics", activity_diagnostics)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
+app.router.add_get("/api/qcl/seasons/status", qcl_season_handlers["status"])
+app.router.add_get("/api/qcl/data", qcl_season_handlers["data"])
+app.router.add_get("/api/qcl/public-data", qcl_season_handlers["public_data"])
+app.router.add_post("/api/qcl/seasons/close", qcl_season_handlers["close"])
+app.router.add_options("/api/qcl/seasons/close", qcl_season_handlers["options"])
 app.router.add_post("/api/draft/setup", draft_setup)
 app.router.add_options("/api/draft/setup", draft_setup)
 app.router.add_post("/api/draft/action", draft_action)
@@ -1668,6 +1701,8 @@ app.router.add_get("/warroom", serve_qtcg)
 app.router.add_get("/warroom/war-room", serve_qtcg)
 app.router.add_get("/resources", serve_resources)
 app.router.add_get("/diagnostics", serve_diagnostics)
+app.router.add_get("/qcl", serve_qcl_hub)
+app.router.add_get("/qcl/", serve_qcl_hub)
 app.router.add_get("/coach", serve_qtcg)
 app.router.add_get("/director", serve_qtcg)
 app.router.add_get("/assets/discord-embedded-sdk.js", serve_discord_sdk)

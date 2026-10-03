@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080c16">
+  <title>QCL · League Command</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f3f6ff;
+      --muted: #a5b2ca;
+      --base: #080c16;
+      --surface: #111a2b;
+      --raised: #1a263b;
+      --line: #a7bce02b;
+      --lime: #f9ff2e;
+      --accent: #9bb8ff;
+      --bad: #ff7f8d;
+      --good: #7fe0ba;
+      --shadow: #02050c99;
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; min-height: 100%; background: var(--base); }
+    body {
+      min-width: 320px; min-height: 100dvh; margin: 0; color: var(--ink);
+      font: 600 13px/1.45 system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse at 18% -8%, #263653 0, transparent 34%),
+        radial-gradient(ellipse at 100% 40%, #16283a 0, transparent 32%),
+        var(--base);
+    }
+    button, input, select { font: inherit; color: inherit; }
+    button, select, input {
+      border: 1px solid var(--line); border-radius: 7px; background: #111a2b;
+    }
+    button { min-height: 40px; padding: 8px 11px; cursor: pointer; font-weight: 800; }
+    button:hover:not(:disabled) { border-color: #f9ff2e75; background: #1a2940; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 2px solid var(--lime); outline-offset: 2px;
+    }
+    a { color: inherit; }
+    .shell { width: min(1600px, 100%); min-height: 100dvh; margin: auto; padding: 0 20px 28px; }
+    .masthead {
+      position: sticky; top: 0; z-index: 10; display: flex; align-items: center;
+      justify-content: space-between; gap: 16px; min-height: 58px; margin: 0 -20px;
+      padding: 8px 20px; border-bottom: 1px solid var(--line);
+      background: #0a1120ed; backdrop-filter: blur(16px);
+    }
+    .brand-line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark { color: var(--lime); font-size: 12px; font-weight: 950; letter-spacing: .16em; white-space: nowrap; }
+    .brand-rule { width: 1px; height: 23px; background: var(--line); }
+    .product-name { font-size: 11px; color: #c5d0e4; letter-spacing: .09em; text-transform: uppercase; }
+    .head-actions { display: flex; align-items: center; gap: 9px; }
+    .session-state { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .session-dot { width: 7px; height: 7px; border-radius: 50%; background: #77849b; }
+    .session-state[data-state="ready"] .session-dot { background: var(--good); }
+    .session-state[data-state="error"] .session-dot { background: var(--bad); }
+    .activity-link {
+      display: inline-flex; align-items: center; min-height: 36px; padding: 7px 10px;
+      border: 1px solid #f9ff2e4d; border-radius: 7px; background: #f9ff2e10;
+      color: var(--lime); text-decoration: none; font-size: 11px; font-weight: 850;
+      white-space: nowrap;
+    }
+    .activity-link:hover { background: #f9ff2e1d; }
+    .layout { display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 20px; padding-top: 18px; }
+    .rail { align-self: start; position: sticky; top: 76px; max-height: calc(100dvh - 94px); overflow: auto; scrollbar-width: thin; }
+    .rail-top { padding: 2px 0 13px; border-bottom: 1px solid var(--line); }
+    .rail-label, .eyebrow {
+      margin: 0; color: #9cacc7; font-size: 9px; font-weight: 900;
+      letter-spacing: .15em; text-transform: uppercase;
+    }
+    .rail-top h2 { margin: 5px 0 2px; font-size: 17px; letter-spacing: -.03em; }
+    .rail-top p:last-child { margin: 0; color: var(--muted); font-size: 10px; }
+    .page-nav { display: grid; gap: 2px; padding: 10px 0 15px; }
+    .page-nav button {
+      display: flex; align-items: center; width: 100%; min-height: 34px; padding: 6px 9px;
+      border-color: transparent; background: transparent; color: #b6c3d9;
+      text-align: left; font-size: 11px; font-weight: 700;
+    }
+    .page-nav button[aria-current="page"] {
+      border-color: #f9ff2e35; background: #f9ff2e12; color: var(--lime);
+      box-shadow: inset 2px 0 var(--lime);
+    }
+    .page-nav button:hover:not(:disabled) { border-color: var(--line); background: #ffffff08; }
+    .desk-nav { padding: 10px 0 13px; border-top: 1px solid var(--line); }
+    .desk-nav h3 { margin: 0 0 7px; color: #9cacc7; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; }
+    .desk-nav button {
+      display: block; width: 100%; margin: 3px 0; text-align: left;
+      border-color: #9bb8ff30; background: #17243a; font-size: 11px;
+    }
+    .rail-foot { padding: 10px 1px 3px; border-top: 1px solid var(--line); color: #8190a9; font-size: 10px; }
+    .workspace { min-width: 0; }
+    .hero {
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 18px;
+      padding: 4px 0 17px;
+    }
+    .hero h1 { margin: 4px 0 0; font-size: clamp(24px, 3vw, 36px); line-height: 1.04; letter-spacing: -.055em; }
+    .hero p { max-width: 540px; margin: 7px 0 0; color: var(--muted); font-size: 11px; }
+    .edition-stamp { flex: 0 0 auto; padding: 8px 11px; border: 1px solid #f9ff2e40; border-radius: 7px; background: #f9ff2e0c; text-align: right; }
+    .edition-stamp span { display: block; color: #a5b2ca; font-size: 8px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+    .edition-stamp strong { display: block; margin-top: 1px; color: var(--lime); font-size: 14px; font-variant-numeric: tabular-nums; }
+    .commandbar {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      padding: 9px; border: 1px solid var(--line); border-radius: 10px;
+      background: #0e1727ed; box-shadow: 0 10px 28px var(--shadow);
+    }
+    .commandbar label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 800; }
+    .commandbar select, .commandbar input { min-height: 36px; padding: 6px 9px; }
+    #seasonSelect { width: 108px; }
+    #editionSelect { width: 105px; }
+    #rowSearch { flex: 1 1 190px; min-width: 145px; }
+    .commandbar .refresh { min-width: 80px; }
+    .status-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 35px; color: var(--muted); font-size: 10px; }
+    .status-line strong { color: #dce5f5; font-variant-numeric: tabular-nums; }
+    .layout-content { display: grid; grid-template-columns: minmax(0, 1fr) 250px; align-items: start; gap: 12px; }
+    .data-panel, .season-panel, .page-panel {
+      min-width: 0; border: 1px solid var(--line); border-radius: 10px;
+      background: linear-gradient(150deg, rgba(31,43,64,.96), rgba(14,21,35,.98));
+      box-shadow: 0 10px 28px var(--shadow), inset 0 1px #ffffff0d;
+    }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 13px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+    .panel-head span { color: var(--muted); font-size: 9px; }
+    .table-scroll { max-height: min(66vh, 690px); overflow: auto; scrollbar-width: thin; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 10px; }
+    thead { position: sticky; top: 0; z-index: 1; background: #162238; }
+    th { color: #aebbd1; font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid #a7bce01a; white-space: nowrap; }
+    td { color: #e2e9f5; font-variant-numeric: tabular-nums; }
+    tbody tr:hover { background: #ffffff06; }
+    td:first-child { max-width: 210px; overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+    .empty-state { padding: 35px 18px; text-align: center; }
+    .empty-state strong { display: block; color: #e3eafa; font-size: 13px; }
+    .empty-state p { max-width: 390px; margin: 6px auto 13px; color: var(--muted); font-size: 11px; }
+    .empty-state.error strong { color: var(--bad); }
+    .season-panel { padding: 13px; }
+    .season-panel h2 { margin: 0 0 9px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+    .season-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 10px 0 13px; }
+    .season-cell { min-width: 0; padding: 9px; border: 1px solid #9bb8ff25; border-radius: 7px; background: #0e1727; }
+    .season-cell span { display: block; color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+    .season-cell strong { display: block; margin-top: 4px; overflow: hidden; color: var(--lime); font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+    .season-copy { margin: 0; color: var(--muted); font-size: 10px; }
+    .missing-list { margin: 9px 0 0; padding-left: 17px; color: #ffc47c; font-size: 10px; }
+    .season-actions { margin-top: 12px; }
+    .season-actions button { width: 100%; border-color: #ff7f8d55; background: #ff7f8d12; color: #ffb4bd; }
+    .season-actions button:hover:not(:disabled) { border-color: var(--bad); background: #ff7f8d20; }
+    .inline-note { min-height: 17px; margin: 8px 0 0; color: var(--muted); font-size: 10px; }
+    .inline-note.error { color: var(--bad); }
+    .role-note { margin-top: 10px; padding: 9px; border-left: 2px solid var(--accent); background: #9bb8ff0b; color: #b8c7e0; font-size: 10px; }
+    .page-panel { margin-top: 12px; padding: 12px 13px; }
+    .page-panel h2 { margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; }
+    .page-panel p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
+    .page-panel { margin: 0 0 12px; padding: 0; overflow: hidden; }
+    .page-view-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px; border-bottom: 1px solid var(--line); }
+    .page-view-head h2 { margin: 0; color: #edf2ff; font-size: 13px; letter-spacing: -.01em; text-transform: none; }
+    .page-view-head p { max-width: 680px; margin: 4px 0 0; font-size: 10px; }
+    .view-body { padding: 12px; }
+    .view-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .view-metric { min-width: 0; padding: 11px; border: 1px solid #9bb8ff25; border-radius: 8px; background: #0e1727; }
+    .view-metric span { display: block; color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+    .view-metric strong { display: block; margin-top: 5px; overflow: hidden; color: var(--lime); font-size: 22px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .view-metric small { display: block; margin-top: 4px; color: #8998b2; font-size: 9px; }
+    .view-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+    .view-block { min-width: 0; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #0d1626; }
+    .view-block h3 { margin: 0; padding: 10px 11px; border-bottom: 1px solid var(--line); color: #dce5f5; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+    .view-block > p { padding: 0 11px; color: var(--muted); font-size: 10px; }
+    .view-table-wrap { max-width: 100%; overflow-x: auto; }
+    .view-table { min-width: 430px; }
+    .view-table td:first-child { max-width: 220px; }
+    .view-table .numeric { text-align: right; }
+    .view-note { margin: 0; padding: 11px; color: var(--muted); font-size: 10px; }
+    .view-note strong { color: #dfe8f8; }
+    .view-note.unavailable { border-left: 2px solid #ffbc70; color: #c8d2e2; }
+    .view-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 10px 0 0; }
+    .view-actions label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
+    .view-actions select, .view-actions input { min-height: 35px; padding: 6px 8px; }
+    .view-actions select { max-width: 210px; }
+    .view-link { display: inline-flex; align-items: center; min-height: 35px; padding: 6px 10px; border: 1px solid #f9ff2e4d; border-radius: 7px; color: var(--lime); background: #f9ff2e0c; text-decoration: none; font-size: 10px; font-weight: 850; }
+    .view-empty { padding: 18px 12px; color: var(--muted); text-align: center; font-size: 10px; }
+    .view-empty strong { display: block; margin-bottom: 4px; color: #e3eafa; font-size: 12px; }
+    .desk-nav [hidden] { display: none !important; }
+    @media (max-width: 820px) {
+      .view-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      .view-split { grid-template-columns: 1fr; }
+      .page-view-head { flex-direction: column; }
+      .view-body { padding: 8px; }
+      .view-metric { padding: 9px; }
+      .view-metric strong { font-size: 19px; }
+    }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    dialog { width: min(450px, calc(100% - 28px)); padding: 0; border: 1px solid #ff7f8d80; border-radius: 11px; color: var(--ink); background: #101a2b; box-shadow: 0 20px 70px #000a; }
+    dialog::backdrop { background: #02050cbb; backdrop-filter: blur(4px); }
+    .dialog-body { padding: 19px; }
+    .dialog-body h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+    .dialog-body p { color: var(--muted); font-size: 12px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 9px; }
+    .danger-button { border-color: #ff7f8d66; color: #ffb4bd; }
+    .mobile-menu { display: none; }
+    @media (max-width: 1120px) {
+      .layout-content { grid-template-columns: minmax(0, 1fr) 220px; }
+      .layout { grid-template-columns: 215px minmax(0, 1fr); gap: 15px; }
+    }
+    @media (max-width: 820px) {
+      .shell { padding: 0 12px 85px; }
+      .masthead { margin: 0 -12px; padding: 8px 12px; }
+      .layout { display: block; padding-top: 11px; }
+      .rail { position: static; max-height: none; overflow: visible; }
+      .rail-top, .desk-nav, .rail-foot { display: none; }
+      .mobile-menu { display: block; width: 100%; margin-bottom: 7px; min-height: 38px; }
+      .page-nav { display: flex; overflow-x: auto; gap: 5px; padding: 0 0 10px; scrollbar-width: thin; }
+      .page-nav button { flex: 0 0 auto; width: auto; min-height: 34px; border: 1px solid var(--line); white-space: nowrap; }
+      .page-nav button[aria-current="page"] { box-shadow: inset 0 -2px var(--lime); }
+      .layout-content { grid-template-columns: 1fr; }
+      .season-panel { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; column-gap: 14px; }
+      .season-panel h2, .season-panel > .eyebrow { grid-column: 1 / -1; }
+      .season-pair { min-width: 190px; margin: 8px 0 0; }
+      .season-copy { max-width: 400px; }
+      .season-actions { min-width: 180px; margin: 0; }
+      .missing-list, .inline-note { grid-column: 1 / -1; }
+    }
+    @media (max-width: 560px) {
+      .shell { padding-right: 9px; padding-left: 9px; }
+      .masthead { margin: 0 -9px; padding: 7px 9px; min-height: 53px; }
+      .product-name, .brand-rule { display: none; }
+      .session-state { font-size: 9px; }
+      .activity-link { min-height: 33px; padding: 6px 8px; font-size: 10px; }
+      .hero { align-items: flex-start; flex-direction: column; gap: 10px; padding: 4px 1px 12px; }
+      .edition-stamp { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
+      .edition-stamp strong { margin: 0; }
+      .commandbar { gap: 6px; padding: 7px; }
+      .commandbar label { flex: 1; }
+      .commandbar select { flex: 1; width: 100%; min-width: 0; }
+      #rowSearch { order: 3; flex-basis: calc(100% - 80px); }
+      .commandbar .refresh { order: 4; flex: 1; }
+      .status-line { align-items: flex-start; flex-direction: column; justify-content: center; gap: 0; padding: 5px 1px; }
+      .season-panel { display: block; }
+      .season-pair { min-width: 0; }
+      .season-actions { margin-top: 11px; }
+      .table-scroll { max-height: 58vh; }
+      th, td { padding: 8px 7px; }
+      .page-nav { margin-right: -9px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div class="brand-line">
+        <div class="brand-mark">● QTCG / QCL</div>
+        <span class="brand-rule" aria-hidden="true"></span>
+        <div class="product-name">League command</div>
+      </div>
+      <div class="head-actions">
+        <div id="sessionState" class="session-state" data-state="checking" aria-live="polite"><span class="session-dot" aria-hidden="true"></span><span id="sessionText">Checking session</span></div>
+        <a class="activity-link" href="/" aria-label="Return to the existing QTCG Activity">Back to QTCG Activity</a>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="rail" aria-label="QCL navigation">
+        <div class="rail-top"><p class="rail-label">League navigation</p><h2>QCL Control</h2><p>Pick a desk. Read the floor.</p></div>
+        <label class="visually-hidden" for="mobilePageSelect">Choose a QCL page</label>
+        <select id="mobilePageSelect" class="mobile-menu" aria-label="Choose a QCL page"></select>
+        <nav id="pageNav" class="page-nav" aria-label="QCL pages"></nav>
+        <section id="roleDeskNav" class="desk-nav" aria-label="Role-specific desks" hidden>
+          <h3>Role-specific desks</h3>
+          <button id="gmDeskButton" type="button" data-page="🏢 GM Desk" hidden>🏢 GM Desk</button>
+          <button id="playersDeskButton" type="button" data-page="👥 Players Desk" hidden>👥 Players Desk</button>
+        </section>
+        <div class="rail-foot">Live league data · QCL API</div>
+      </aside>
+
+      <main class="workspace">
+        <header class="hero">
+          <div><p class="eyebrow">QCL · OPERATIONS FLOOR</p><h1 id="pageTitle">🏠 League Home &amp; Awards</h1><p id="pageDescription">League data, season operations, and the current competition at a glance.</p></div>
+          <div class="edition-stamp" aria-label="Active edition"><span>Edition</span><strong id="editionBadge">—</strong></div>
+        </header>
+
+        <section class="commandbar" aria-label="League data controls">
+          <label for="seasonSelect">Season <select id="seasonSelect" aria-label="Choose season"><option value="">—</option></select></label>
+          <label for="editionSelect">Edition <select id="editionSelect" aria-label="Choose edition"><option value="">—</option></select></label>
+          <input id="rowSearch" type="search" placeholder="Search player, team, or game…" aria-label="Search league data">
+          <button id="refreshButton" class="refresh" type="button">Refresh</button>
+        </section>
+        <div class="status-line" aria-live="polite">
+          <span id="dataStatus">Loading league data…</span>
+          <span id="rowCount"><strong>—</strong> rows</span>
+        </div>
+
+        <section class="page-panel" aria-labelledby="pagePanelTitle">
+          <div class="page-view-head"><div><h2 id="pagePanelTitle">🏠 League Home &amp; Awards</h2><p id="pagePanelCopy">Loading real league rows for this desk…</p></div></div>
+          <div id="pageContent" class="view-body" aria-live="polite"><div class="view-empty"><strong>Loading league view</strong>Waiting for QCL rows.</div></div>
+        </section>
+
+        <div class="layout-content">
+          <section class="data-panel" aria-labelledby="dataHeading">
+            <div class="panel-head"><h2 id="dataHeading">Season game log</h2><span id="tableMeta">QCL DATA</span></div>
+            <div id="dataRegion" class="table-scroll" aria-live="polite" aria-busy="true">
+              <div class="empty-state"><strong>Connecting to league data</strong><p>Waiting for the signed QCL session and season feed.</p></div>
+            </div>
+          </section>
+
+          <aside id="seasonPanel" class="season-panel" aria-labelledby="seasonHeading">
+            <p class="eyebrow">Season desk</p>
+            <h2 id="seasonHeading">Season status</h2>
+            <div class="season-pair">
+              <div class="season-cell"><span>Active</span><strong id="activeSeason">—</strong></div>
+              <div class="season-cell"><span>Next</span><strong id="nextSeason">—</strong></div>
+            </div>
+            <p id="seasonCopy" class="season-copy" aria-live="polite">Loading signed season status…</p>
+            <ul id="missingConfiguration" class="missing-list" hidden></ul>
+            <div id="seasonActions" class="season-actions" hidden>
+              <button id="closeSeasonButton" type="button">Close season</button>
+              <p id="seasonActionNote" class="inline-note" role="status"></p>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="closeDialog" aria-labelledby="dialogTitle" aria-describedby="dialogCopy">
+    <div class="dialog-body">
+      <p class="eyebrow">Commissioner action</p>
+      <h2 id="dialogTitle">Close this season?</h2>
+      <p id="dialogCopy">This closes, exports, and archives the current season and creates the next active workbook. Continue only when league operations are ready.</p>
+      <div class="dialog-actions">
+        <button id="cancelClose" type="button">Cancel</button>
+        <button id="confirmClose" class="danger-button" type="button">Close season</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      "use strict";
+      const PAGES = [
+        "📰 News & Updates", "📱 Mobile Hub", "📝 Register", "🏠 League Home & Awards",
+        "Film Terminal", "🌌 Player Galaxy", "🏅 Awards & Rewards", "🏆 Power Rankings & SOS",
+        "🏢 Franchise Hub", "🛡️ League Teams", "🔦 Player Spotlight", "🗃️ Full Player Database",
+        "⚔️ Head-to-Head Radar", "🧪 Lineup Lab", "🥊 Rivalry Corner", "🏆 Playoffs",
+        "🔮 Oracle Predictor", "🔬 Advanced Analytics Lab", "🏦 The Vault", "📈 Card Market",
+        "🎴 Qwiks TCG", "🎮 QTCG Desk", "🧢 Draft Room", "🗂 My QTCG Binder",
+        "👤 My Profile", "🎁 Open Packs", "🃏 Player Cards", "💬 Discord",
+        "📖 Record Book & Milestones", "🏢 GM Desk", "👥 Players Desk"
+      ];
+      const $ = (selector) => document.querySelector(selector);
+      const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+      const session = localStorage.getItem("qcl-session") || "";
+      const state = { status: null, statusError: "", dataError: "", headers: [], rows: [], editions: [], edition: "", season: "", seasonInitialized: false, dataReady: false, dataRequestPending: false, page: "🏠 League Home & Awards", loadingData: false, loadingStatus: false, headToHeadA: "", headToHeadB: "" };
+      const dataStatus = $("#dataStatus");
+
+      function endpoint(path, params = {}) {
+        const url = new URL(path, window.location.origin);
+        Object.entries(params).forEach(([key, value]) => {
+          if (value === "" && key === "season") url.searchParams.set(key, "");
+          else if (value !== "" && value !== null && value !== undefined) url.searchParams.set(key, String(value));
+        });
+        if (session) url.searchParams.set("session", session);
+        return url.toString();
+      }
+      async function request(path, options = {}) {
+        const headers = { ...(options.headers || {}) };
+        if (options.body) headers["Content-Type"] = "application/json";
+        const response = await fetch(endpoint(path, options.method === "GET" || !options.method ? options.params : {}), {
+          ...options, headers,
+          ...(options.body ? { body: JSON.stringify({ ...options.body, session }) } : {})
+        });
+        const payload = await response.json().catch(() => ({ error: "Invalid server response" }));
+        if (!response.ok || payload.ok === false) {
+          const error = new Error(payload.error || payload.message || `Request failed (${response.status})`);
+          error.status = response.status;
+          throw error;
+        }
+        return payload;
+      }
+      function setSession(text, status) {
+        $("#sessionText").textContent = text;
+        $("#sessionState").dataset.state = status;
+      }
+      function seasonValue(value) {
+        if (value && typeof value === "object") return value.season_number ?? value.season_label ?? "—";
+        return value ?? "—";
+      }
+      function seasonLabel(value) {
+        if (!value || typeof value !== "object") return String(value ?? "—");
+        return value.season_label || (value.season_number !== undefined ? `Season ${value.season_number}` : "—");
+      }
+      function activeForEdition(edition = state.edition) {
+        const active = state.status?.active;
+        return active && String(active.game_edition || "") === String(edition || "") ? active : null;
+      }
+      function populateSeasons(defaultActive = false) {
+        const select = $("#seasonSelect");
+        const selected = String(state.season ?? "");
+        const active = activeForEdition();
+        const seasons = (Array.isArray(state.status?.closed_seasons) ? state.status.closed_seasons : [])
+          .filter((item) => String(item.game_edition || "") === String(state.edition || ""))
+          .concat(active ? [active] : [])
+          .filter((item, index, all) => item.season_number !== undefined &&
+            all.findIndex((candidate) => String(candidate.season_number) === String(item.season_number)) === index)
+          .sort((a, b) => Number(b.season_number) - Number(a.season_number));
+        select.innerHTML = `<option value="">All seasons</option>${seasons.map((item) => `<option value="${esc(item.season_number)}">${esc(seasonLabel(item))}</option>`).join("")}`;
+        const validSelection = selected === "" || seasons.some((item) => String(item.season_number) === selected);
+        const preferred = active && active.season_number !== undefined ? String(active.season_number) : "";
+        select.value = defaultActive ? preferred : (validSelection ? selected : "");
+        if (select.value === "" && !seasons.some((item) => String(item.season_number) === preferred)) select.value = "";
+        state.season = select.value;
+        state.seasonInitialized = true;
+      }
+      function updateEditionChoices() {
+        const activeEdition = state.status?.active?.game_edition;
+        const archivedEditions = (state.status?.closed_seasons || []).map((item) => item.game_edition);
+        const choices = [...new Set([activeEdition, ...archivedEditions, ...state.editions.map((edition) => typeof edition === "object" ? edition.game_edition || edition.edition : edition), state.edition].filter(Boolean).map(String))];
+        if (!state.edition) state.edition = String(activeEdition || choices[0] || "");
+        const select = $("#editionSelect");
+        select.innerHTML = choices.map((edition) => `<option value="${esc(edition)}">${esc(edition)}</option>`).join("");
+        if (!choices.includes(state.edition) && choices.length) state.edition = choices[0];
+        select.value = state.edition;
+        $("#editionBadge").textContent = state.edition || "—";
+      }
+      function renderStatus() {
+        const status = state.status;
+        const hasStatus = Boolean(status);
+        $("#activeSeason").textContent = hasStatus ? seasonLabel(status.active) : "—";
+        $("#nextSeason").textContent = hasStatus ? seasonLabel(status.next) : "—";
+        $("#seasonCopy").textContent = !hasStatus
+          ? (state.statusError || "Season status unavailable. Retry to check signed league permissions.")
+          : status.ready === true
+            ? "Configuration is ready for the next season transition."
+            : "Season transition is not ready. Resolve the listed setup items first.";
+        const missing = Array.isArray(status?.missing_configuration) ? status.missing_configuration : [];
+        $("#missingConfiguration").innerHTML = missing.map((item) => `<li>${esc(typeof item === "string" ? item : JSON.stringify(item))}</li>`).join("");
+        $("#missingConfiguration").hidden = !missing.length;
+        const commissioner = status?.is_commissioner === true;
+        $("#seasonActions").hidden = !commissioner;
+        $("#closeSeasonButton").disabled = status?.ready !== true || state.loadingStatus;
+        $("#closeSeasonButton").title = status?.ready === true ? "Close and archive the active season" : "Season status reports that required configuration is not ready";
+        $("#gmDeskButton").hidden = status?.can_see_gm_desk !== true;
+        $("#playersDeskButton").hidden = status?.can_see_players_desk !== true;
+        $("#roleDeskNav").hidden = status?.can_see_gm_desk !== true && status?.can_see_players_desk !== true;
+        let pageWasRevoked = false;
+        if (!canSeePage(state.page)) {
+          state.page = "🏠 League Home & Awards";
+          $("#pageTitle").textContent = state.page;
+          pageWasRevoked = true;
+        }
+        renderNavigation();
+        if (pageWasRevoked) renderPage();
+      }
+      async function loadStatus() {
+        state.loadingStatus = true;
+        renderStatus();
+        try {
+          if (!session) throw new Error("No qcl-session value found in local storage.");
+          state.status = await request("/api/qcl/seasons/status");
+          state.statusError = "";
+          const activeEdition = state.status?.active?.game_edition;
+          if (activeEdition && !state.edition) state.edition = String(activeEdition);
+          updateEditionChoices();
+          populateSeasons(!state.seasonInitialized);
+          setSession("Signed QCL session", "ready");
+          initNavigation();
+          renderStatus();
+        } catch (error) {
+          state.status = null;
+          state.statusError = error.message;
+          setSession(session ? "Session check failed" : "No QCL session", "error");
+          $("#seasonActions").hidden = true;
+          $("#activeSeason").textContent = "—";
+          $("#nextSeason").textContent = "—";
+        } finally {
+          state.loadingStatus = false;
+          renderStatus();
+        }
+      }
+      function dataKeys(row, headers) {
+        if (Array.isArray(row)) return headers.map((header, index) => [header, row[index]]);
+        if (row && typeof row === "object") return Object.entries(row);
+        return [];
+      }
+      function valueFor(row, header, index) {
+        if (Array.isArray(row)) return row[index];
+        if (row && typeof row === "object") {
+          if (Object.prototype.hasOwnProperty.call(row, header)) return row[header];
+          const match = Object.keys(row).find((key) => key.toLowerCase() === String(header).toLowerCase());
+          return match ? row[match] : "";
+        }
+        return "";
+      }
+      function field(row, name) {
+        const headers = state.headers.length ? state.headers : (row && !Array.isArray(row) ? Object.keys(row) : []);
+        const header = headers.find((item) => String(item).toLowerCase() === String(name).toLowerCase());
+        return header === undefined ? "" : valueFor(row, header, headers.indexOf(header));
+      }
+      function numeric(value) {
+        if (typeof value === "number") return Number.isFinite(value) ? value : null;
+        if (value === null || value === undefined || String(value).trim() === "") return null;
+        const parsed = Number(String(value).replace(/,/g, "").replace(/%$/, ""));
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      function formatNumber(value, digits = 1) {
+        if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+        return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+      }
+      function formatPct(value) { return value === null || value === undefined ? "—" : `${(value * 100).toFixed(1)}%`; }
+      function itemName(row) { return String(field(row, "Player/Team") || ""); }
+      function teamName(row) { return String(field(row, "Team Name") || ""); }
+      function rowSeason(row) { return String(field(row, "Season") ?? ""); }
+      function rowEdition(row) { return String(field(row, "Game Edition") ?? ""); }
+      function isWin(value) { return ["1", "true", "yes", "w", "win"].includes(String(value ?? "").trim().toLowerCase()); }
+      function rowGameKey(row, index = 0) {
+        const id = field(row, "Game_ID");
+        return id !== "" ? `${rowEdition(row)}|${rowSeason(row)}|${id}` : `${rowEdition(row)}|${rowSeason(row)}|row-${index}`;
+      }
+      const STAT_FIELDS = ["PTS", "REB", "AST", "STL", "BLK", "FOULS", "TO", "FGM", "FGA", "3PM", "3PA", "FTM", "FTA", "OREB", "DREB", "MIN"];
+      function aggregatePlayers(rows) {
+        const groups = new Map();
+        rows.forEach((row, index) => {
+          const player = itemName(row).trim();
+          if (!player) return;
+          const team = teamName(row);
+          const key = `${player.toLowerCase()}|${team.toLowerCase()}`;
+          let entry = groups.get(key);
+          if (!entry) {
+            entry = { player, team, sums: Object.fromEntries(STAT_FIELDS.map((stat) => [stat, 0])), games: new Set(), seen: Object.fromEntries(STAT_FIELDS.map((stat) => [stat, false])) };
+            groups.set(key, entry);
+          }
+          entry.games.add(rowGameKey(row, index));
+          STAT_FIELDS.forEach((stat) => {
+            const value = numeric(field(row, stat));
+            if (value !== null) { entry.sums[stat] += value; entry.seen[stat] = true; }
+          });
+        });
+        return [...groups.values()].map((entry) => {
+          const gp = entry.games.size;
+          const avg = (stat) => entry.seen[stat] && gp ? entry.sums[stat] / gp : null;
+          const pct = (made, attempted) => entry.seen[made] && entry.seen[attempted] && entry.sums[attempted] > 0 ? entry.sums[made] / entry.sums[attempted] : null;
+          return { ...entry, gp, ppg: avg("PTS"), rpg: avg("REB"), apg: avg("AST"), spg: avg("STL"), bpg: avg("BLK"), fgPct: pct("FGM", "FGA"), threePct: pct("3PM", "3PA"), ftPct: pct("FTM", "FTA") };
+        });
+      }
+      function aggregateTeams(rows) {
+        const gameMap = new Map();
+        rows.forEach((row, index) => {
+          const team = teamName(row);
+          if (!team) return;
+          const id = rowGameKey(row, index);
+          const key = `${id}|${team.toLowerCase()}`;
+          let game = gameMap.get(key);
+          if (!game) { game = { id, team, points: 0, pointsSeen: false, wins: false, lossKnown: false }; gameMap.set(key, game); }
+          const points = numeric(field(row, "PTS"));
+          if (points !== null) { game.points += points; game.pointsSeen = true; }
+          const win = field(row, "Win");
+          if (String(win).trim() !== "") { game.lossKnown = true; game.wins = game.wins || isWin(win); }
+        });
+        const games = [...gameMap.values()];
+        const teamMap = new Map();
+        games.forEach((game) => {
+          let team = teamMap.get(game.team);
+          if (!team) { team = { team: game.team, games: 0, wins: 0, losses: 0, resultGames: 0, points: 0, pointsSeen: false, opponents: new Set() }; teamMap.set(game.team, team); }
+          team.games++;
+          if (game.lossKnown) {
+            team.resultGames++;
+            if (game.wins) team.wins++;
+            else team.losses++;
+          }
+          if (game.pointsSeen) { team.points += game.points; team.pointsSeen = true; }
+        });
+        const byGame = new Map();
+        games.forEach((game) => { if (!byGame.has(game.id)) byGame.set(game.id, []); byGame.get(game.id).push(game); });
+        byGame.forEach((gameTeams) => {
+          const distinct = [...new Map(gameTeams.map((game) => [game.team, game])).values()];
+          if (distinct.length > 1) distinct.forEach((game) => distinct.filter((other) => other.team !== game.team).forEach((other) => teamMap.get(game.team)?.opponents.add(other.team)));
+        });
+        const teams = [...teamMap.values()].map((team) => ({ ...team, wins: team.resultGames ? team.wins : null, losses: team.resultGames ? team.losses : null, pct: team.resultGames ? team.wins / team.resultGames : null, ppg: team.pointsSeen && team.games ? team.points / team.games : null, sos: null }));
+        const byName = new Map(teams.map((team) => [team.team, team]));
+        teams.forEach((team) => {
+          const opponents = [...team.opponents].map((name) => byName.get(name)).filter((item) => item && item.pct !== null);
+          if (opponents.length) team.sos = opponents.reduce((sum, item) => sum + item.pct, 0) / opponents.length;
+        });
+        return { games, teams, byGame };
+      }
+      function matchupResults(teamData) {
+        const pairs = new Map();
+        teamData.byGame.forEach((games, gameId) => {
+          const sides = [...new Map(games.map((game) => [game.team, game])).values()];
+          if (sides.length < 2) return;
+          for (let i = 0; i < sides.length; i++) for (let j = i + 1; j < sides.length; j++) {
+            const [a, b] = [sides[i], sides[j]].sort((left, right) => left.team.localeCompare(right.team));
+            const key = `${a.team}|${b.team}`;
+            let pair = pairs.get(key);
+            if (!pair) pair = { a: a.team, b: b.team, games: 0, aWins: 0, bWins: 0, aPoints: 0, bPoints: 0, pointsSeen: false, ids: new Set() };
+            if (pair.ids.has(gameId)) continue;
+            pair.ids.add(gameId);
+            pair.games++;
+            if (a.wins) pair.aWins++;
+            if (b.wins) pair.bWins++;
+            if (a.pointsSeen && b.pointsSeen) { pair.aPoints += a.points; pair.bPoints += b.points; pair.pointsSeen = true; }
+            pairs.set(key, pair);
+          }
+        });
+        return [...pairs.values()].map(({ ids, ...pair }) => pair).sort((a, b) => b.games - a.games || a.a.localeCompare(b.a));
+      }
+      function metric(label, value, detail = "") {
+        return `<div class="view-metric"><span>${esc(label)}</span><strong>${esc(value)}</strong>${detail ? `<small>${esc(detail)}</small>` : ""}</div>`;
+      }
+      function tableHtml(headers, rows, empty = "No matching rows in the selected feed.") {
+        if (!rows.length) return `<div class="view-empty"><strong>No rows to show</strong>${esc(empty)}</div>`;
+        return `<div class="view-table-wrap"><table class="view-table"><thead><tr>${headers.map((header) => `<th scope="col">${esc(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      }
+      function viewBlock(title, headers, rows, empty) {
+        return `<section class="view-block"><h3>${esc(title)}</h3>${tableHtml(headers, rows, empty)}</section>`;
+      }
+      function viewMetricGrid(metrics) { return `<div class="view-grid">${metrics.join("")}</div>`; }
+      function playerTable(players, limit = 0) {
+        const list = limit ? players.slice(0, limit) : players;
+        return list.map((player) => [player.player, player.team || "—", player.gp, formatNumber(player.ppg), formatNumber(player.rpg), formatNumber(player.apg), formatNumber(player.spg), formatNumber(player.bpg)]);
+      }
+      function teamTable(teams) { return teams.map((team) => [team.team, team.wins ?? "—", team.losses ?? "—", formatPct(team.pct), formatNumber(team.ppg), formatPct(team.sos)]); }
+      function gameCount(rows) { return new Set(rows.map((row, index) => rowGameKey(row, index))).size; }
+      function unavailableView(title, explanation, qtcg = false) {
+        return `<div class="view-note unavailable"><strong>${esc(title)}</strong><br>${esc(explanation)}${qtcg ? '<div class="view-actions"><a class="view-link" href="/">Open QTCG Activity</a></div>' : ""}</div>`;
+      }
+      function filteredRows() {
+        const query = $("#rowSearch").value.trim().toLowerCase();
+        if (!query) return state.rows;
+        return state.rows.filter((row) => dataKeys(row, state.headers).some(([, value]) => String(value ?? "").toLowerCase().includes(query)));
+      }
+      function renderTable() {
+        const rows = filteredRows();
+        $("#rowCount").innerHTML = `<strong>${rows.length.toLocaleString()}</strong> ${rows.length === 1 ? "row" : "rows"}`;
+        if (!state.dataReady && !state.loadingData) {
+          $("#dataRegion").setAttribute("aria-busy", "true");
+          $("#dataRegion").innerHTML = '<div class="empty-state"><strong>Connecting to league data</strong><p>Waiting for the signed session and active season configuration.</p></div>';
+          return;
+        }
+        if (state.loadingData) {
+          $("#dataRegion").setAttribute("aria-busy", "true");
+          $("#dataRegion").innerHTML = '<div class="empty-state"><strong>Loading season feed</strong><p>Requesting the selected edition and season from QCL.</p></div>';
+          return;
+        }
+        $("#dataRegion").setAttribute("aria-busy", "false");
+        if (!state.rows.length) {
+          $("#dataRegion").innerHTML = `<div class="empty-state"><strong>${session ? "No game rows returned" : "QCL session required"}</strong><p>${session ? "The selected edition and season returned no rows. Choose another season or edition, or refresh the feed." : "Open the existing QTCG Activity to establish your session, then return here. This page reuses qcl-session and does not create a separate login."}</p><button type="button" data-retry>Retry data</button></div>`;
+          return;
+        }
+        if (!rows.length) {
+          $("#dataRegion").innerHTML = '<div class="empty-state"><strong>No matching rows</strong><p>Try a shorter player, team, or game search.</p></div>';
+          return;
+        }
+        const headers = state.headers.length ? state.headers : Object.keys(rows[0] || {});
+        $("#dataRegion").innerHTML = `<table><thead><tr>${headers.map((header) => `<th scope="col">${esc(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((header, index) => `<td>${esc(valueFor(row, header, index))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      }
+      function renderPage() {
+        const page = state.page;
+        const rows = filteredRows();
+        $("#pagePanelTitle").textContent = page;
+        if (state.loadingData || !state.dataReady) {
+          const loadingCopy = `Loading ${state.edition || "selected edition"} league rows…`;
+          $("#pagePanelCopy").textContent = loadingCopy;
+          $("#pageDescription").textContent = loadingCopy;
+          $("#pageContent").innerHTML = '<div class="view-empty"><strong>Loading league view</strong>Calculations will use the QCL response for the selected edition and season.</div>';
+          return;
+        }
+        if (state.dataError) {
+          const errorCopy = "League-backed page content requires a successful QCL data response.";
+          $("#pagePanelCopy").textContent = errorCopy;
+          $("#pageDescription").textContent = errorCopy;
+          $("#pageContent").innerHTML = `<div class="view-empty"><strong>League data unavailable</strong>${esc(state.dataError)}</div>`;
+          return;
+        }
+        const players = aggregatePlayers(rows).sort((a, b) => (b.ppg ?? -Infinity) - (a.ppg ?? -Infinity) || a.player.localeCompare(b.player));
+        const teamData = aggregateTeams(rows);
+        const teams = teamData.teams.sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity) || (b.ppg ?? -Infinity) - (a.ppg ?? -Infinity) || a.team.localeCompare(b.team));
+        const matchups = matchupResults(teamData);
+        const commonLeaders = ["PTS", "REB", "AST", "STL", "BLK"].map((stat) => {
+          const leader = [...players].filter((player) => player.gp > 0 && player.seen[stat]).sort((a, b) => (b.sums[stat] / b.gp) - (a.sums[stat] / a.gp))[0];
+          return leader ? [stat, leader.player, leader.team || "—", formatNumber(leader.sums[stat] / leader.gp)] : null;
+        }).filter(Boolean);
+        const teamRows = teamTable(teams);
+        let content = "";
+        let copy = `Computed from ${rows.length.toLocaleString()} returned game rows · ${state.edition || "edition"} · ${state.season ? `Season ${state.season}` : "all seasons"}.`;
+        const unsupported = {
+          "📰 News & Updates": "News and announcement feeds are not exposed by the QCL data, status, or season endpoints.",
+          "📝 Register": "Registration and approval workflows are not exposed here. This view does not collect or submit registration data.",
+          "Film Terminal": "Film links, clips, and video metadata are not present in the available QCL game rows.",
+          "🔮 Oracle Predictor": "Prediction simulation inputs and outcomes are not exposed by the documented QCL endpoints.",
+          "📈 Card Market": "Market listings, prices, and transactions are not exposed by the QCL data endpoint.",
+          "🎴 Qwiks TCG": "Qwiks TCG inventory and card actions remain in the existing QTCG Activity.",
+          "💬 Discord": "Discord messages and feed content are not exposed by the documented QCL endpoints.",
+          "🏆 Playoffs": "Returned fields do not identify playoff rounds, seeds, series, or bracket progression. A bracket cannot be computed from these rows."
+        };
+        if (unsupported[page]) {
+          content = unavailableView(page === "🏆 Playoffs" ? "Postseason structure unavailable" : "Unavailable with current API", unsupported[page], page === "🎴 Qwiks TCG");
+          copy = page === "🏆 Playoffs"
+            ? "Game results may be available, but this endpoint does not identify which games belong to a playoff series."
+            : "This listed destination has no backing feed among the documented QCL endpoints.";
+        } else if (["🎮 QTCG Desk", "🧢 Draft Room", "🗂 My QTCG Binder", "👤 My Profile", "🎁 Open Packs", "🃏 Player Cards"].includes(page)) {
+          const explanation = page === "🧢 Draft Room"
+            ? "Draft operations, controls, and current-pick authorization remain in the existing QTCG Activity. This page does not change draft rules."
+            : "This QTCG feature remains in the existing Activity; QCL endpoints do not expose its collection, balance, profile, or pack state.";
+          content = unavailableView("Continue in QTCG Activity", explanation, true);
+          copy = "QTCG desk link preserved. Existing Activity controls and draft behavior are unchanged.";
+        } else if (page === "🏠 League Home & Awards" || page === "📱 Mobile Hub") {
+          content = viewMetricGrid([
+            metric("Returned rows", rows.length.toLocaleString(), "QCL response"),
+            metric("Games", gameCount(rows).toLocaleString(), "unique game identifiers"),
+            metric("Players", players.length.toLocaleString(), "player/team combinations"),
+            metric("Teams", teams.length.toLocaleString(), "teams in returned rows")
+          ]) + `<div class="view-split">${viewBlock("Stat leaders", ["Category", "Leader", "Team", "Per game"], commonLeaders, "No numeric player box-score values were returned.")}${viewBlock("Team results", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows.slice(0, 8), "No team game rows are available.")}</div>`;
+          copy = "League overview computed from returned game rows. Statistical leaders are not official award decisions.";
+        } else if (page === "🏅 Awards & Rewards") {
+          content = `<div class="view-note"><strong>Stat leaders only.</strong> Award ballots, official decisions, and reward balances are not included in the QCL game-row API.</div>${viewBlock("Selected-feed leaders", ["Category", "Player", "Team", "Average"], commonLeaders, "No numeric player box-score values were returned.")}`;
+          copy = "Leader values are calculated from PTS, REB, AST, STL, and BLK. No award winner is inferred.";
+        } else if (page === "🏆 Power Rankings & SOS") {
+          content = viewBlock("Team performance · sorted by win rate, then PPG", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows, "No team game rows are available.");
+          content += '<p class="view-note">SOS is mean opponent win percentage from teams sharing Game_ID values. It remains unavailable if opponents cannot be paired.</p>';
+          copy = "Team ranking derives from distinct team/game rows; SOS is calculated only where shared game IDs identify opponents.";
+        } else if (["🏢 Franchise Hub", "🛡️ League Teams", "🏢 GM Desk"].includes(page)) {
+          content = `<div class="view-actions"><span class="eyebrow">${page === "🏢 GM Desk" ? "GM VIEW · APPROVED ROLE" : "TEAM RESULTS · SELECTED FEED"}</span></div>${viewBlock("Team results", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows, "No team names or results were returned for this selection.")}`;
+          copy = page === "🏢 GM Desk"
+            ? `GM desk visibility is controlled by signed QCL status. Team results derive from ${rows.length} returned rows; management actions are not exposed.`
+            : "Team records and point averages are computed from selected QCL rows. No roster-management action is implied.";
+        } else if (["🔦 Player Spotlight", "🗃️ Full Player Database", "🌌 Player Galaxy", "👥 Players Desk"].includes(page)) {
+          const shown = page === "🔦 Player Spotlight" ? players.slice(0, 10) : players;
+          content = page === "🔦 Player Spotlight" && players[0]
+            ? viewMetricGrid([
+              metric("Player", players[0].player, players[0].team || "Team not supplied"),
+              metric("GP", players[0].gp, "distinct game IDs"),
+              metric("PPG", formatNumber(players[0].ppg), "PTS / GP"),
+              metric("RPG / APG", `${formatNumber(players[0].rpg)} / ${formatNumber(players[0].apg)}`, "REB / AST per game")
+            ]) : "";
+          content += viewBlock(page === "🔦 Player Spotlight" ? "Scoring leaders" : "Player statistics", ["Player", "Team", "GP", "PPG", "RPG", "APG", "SPG", "BPG"], playerTable(shown), "No player rows are present in this feed.");
+          if (page === "👥 Players Desk") content += '<p class="view-note">Player desk visibility is supplied by signed status. The API does not identify the signed-in player, so no personal profile is asserted.</p>';
+          copy = page === "🌌 Player Galaxy"
+            ? "Player index from selected rows. The QCL data feed has no spatial coordinates for a star map."
+            : page === "👥 Players Desk"
+              ? "Approved player desk; rows show actual league performance. Signed-in player identity is not included in this response."
+              : "Player per-game averages use returned box-score values and distinct Game_IDs.";
+        } else if (page === "⚔️ Head-to-Head Radar") {
+          const names = teams.map((team) => team.team).sort((a, b) => a.localeCompare(b));
+          if (!names.includes(state.headToHeadA)) state.headToHeadA = names[0] || "";
+          if (!names.includes(state.headToHeadB) || state.headToHeadA === state.headToHeadB) state.headToHeadB = names.find((name) => name !== state.headToHeadA) || "";
+          const options = (selected) => names.map((name) => `<option value="${esc(name)}" ${name === selected ? "selected" : ""}>${esc(name)}</option>`).join("");
+          const match = matchups.find((pair) => (pair.a === state.headToHeadA && pair.b === state.headToHeadB) || (pair.a === state.headToHeadB && pair.b === state.headToHeadA));
+          const aWins = match ? (match.a === state.headToHeadA ? match.aWins : match.bWins) : 0;
+          const bWins = match ? (match.a === state.headToHeadB ? match.aWins : match.bWins) : 0;
+          const controls = `<div class="view-actions"><label>Team A <select data-view-select="h2h-a">${options(state.headToHeadA)}</select></label><label>Team B <select data-view-select="h2h-b">${options(state.headToHeadB)}</select></label></div>`;
+          const details = match
+            ? viewMetricGrid([metric("Shared games", match.games), metric(`${state.headToHeadA} wins`, aWins), metric(`${state.headToHeadB} wins`, bWins), metric("Average points / side", match.pointsSeen ? formatNumber((match.aPoints + match.bPoints) / (match.games * 2)) : "—", "paired team/game rows")])
+            : '<div class="view-empty"><strong>No paired head-to-head rows</strong>These teams have no shared Game_ID matchup in the returned feed.</div>';
+          content = controls + details;
+          copy = "Direct records use only teams with shared Game_ID rows; a matchup is never inferred from labels alone.";
+        } else if (page === "🧪 Lineup Lab") {
+          content = `${viewBlock("Player performance comparison", ["Player", "Team", "GP", "PPG", "RPG", "APG", "SPG", "BPG"], playerTable(players), "No player stat rows are available.")}<p class="view-note">This is a statistical comparison from returned rows. No saved lineup, optimizer, or lineup validation API is exposed.</p>`;
+          copy = "Compare player production in the selected feed. No lineup is saved or recommended without a lineup-specific endpoint.";
+        } else if (page === "🥊 Rivalry Corner") {
+          const rivalries = matchups.filter((match) => match.games > 1).map((match) => [match.a, match.b, match.games, `${match.aWins}-${match.bWins}`, match.pointsSeen ? `${formatNumber(match.aPoints / match.games)} / ${formatNumber(match.bPoints / match.games)}` : "—"]);
+          content = viewBlock("Repeat matchups · 2 or more paired games", ["Team A", "Team B", "Games", "A-B record", "Avg points"], rivalries, "No repeat matchups were found. Counts require repeated shared Game_ID rows.");
+          copy = "Rivalry records are derived from repeated team pairings in the returned games.";
+        } else if (page === "🔬 Advanced Analytics Lab") {
+          const totals = rows.reduce((acc, row) => {
+            ["PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "3PM", "3PA", "FTM", "FTA", "TO", "MIN"].forEach((key) => {
+              const value = numeric(field(row, key));
+              if (value !== null) { acc[key] += value; acc.present[key] = true; }
+            });
+            return acc;
+          }, { present: {} });
+          const ratio = (made, attempts) => totals.present[made] && totals.present[attempts] && totals[attempts] > 0 ? formatPct(totals[made] / totals[attempts]) : "—";
+          content = viewMetricGrid([
+            metric("FG%", ratio("FGM", "FGA"), "sum FGM / sum FGA"),
+            metric("3P%", ratio("3PM", "3PA"), "sum 3PM / sum 3PA"),
+            metric("FT%", ratio("FTM", "FTA"), "sum FTM / sum FTA"),
+            metric("Player rows", players.length.toLocaleString(), "unique player/team groups")
+          ]) + `<div class="view-split">${viewBlock("Numeric totals", ["Measure", "Total"], ["PTS", "REB", "AST", "STL", "BLK", "TO", "MIN"].filter((key) => totals.present[key]).map((key) => [key, formatNumber(totals[key], 0)]), "No numeric aggregate fields were returned.")}${viewBlock("Player shooting", ["Player", "Team", "GP", "FG%", "3P%", "FT%"], players.map((p) => [p.player, p.team || "—", p.gp, formatPct(p.fgPct), formatPct(p.threePct), formatPct(p.ftPct)]), "No player shooting rows were returned.")}</div>`;
+          copy = "Ratios use numeric columns in the selected QCL response; no external ratings or derived fantasy scores are added.";
+        } else if (page === "🏦 The Vault") {
+          const archives = (state.status?.closed_seasons || []).filter((item) => String(item.game_edition || "") === String(state.edition || ""));
+          const active = activeForEdition();
+          const seasons = [...archives, ...(active ? [active] : [])].sort((a, b) => Number(b.season_number) - Number(a.season_number));
+          const archiveRows = seasons.map((season) => {
+            const count = rows.filter((row) => String(field(row, "Season")) === String(season.season_number) && String(field(row, "Game Edition")) === String(season.game_edition)).length;
+            return [season.season_label || `Season ${season.season_number}`, season.game_edition, season === active ? "Active" : "Archived", count.toLocaleString()];
+          });
+          content = `${viewBlock("Season archive · counts from returned rows", ["Season", "Edition", "Status", "Rows"], archiveRows, "No active or closed seasons are listed for this edition.")}<p class="view-note">Archive CSV paths are not exposed as downloads. Counts reflect the current QCL data response.</p>`;
+          copy = "Season entries come from signed status metadata; counts are computed from the selected edition's data rows.";
+        } else if (page === "📖 Record Book & Milestones") {
+          const records = ["PTS", "REB", "AST", "STL", "BLK"].map((stat) => {
+            const candidates = rows.map((row) => ({ row, value: numeric(field(row, stat)) })).filter((item) => item.value !== null).sort((a, b) => b.value - a.value);
+            const lead = candidates[0];
+            return lead ? [stat, lead.value, itemName(lead.row) || "—", teamName(lead.row) || "—", field(lead.row, "Game_ID") || "—"] : null;
+          }).filter(Boolean);
+          content = `${viewBlock("Highest single-row values", ["Stat", "Value", "Player/Team", "Team", "Game ID"], records, "No numeric box-score values are available.")}<p class="view-note">These are maxima in the current response, not certified all-time records unless all seasons are selected.</p>`;
+          copy = "Milestones derive directly from returned box-score values. Select All seasons to include available history for this edition.";
+        } else {
+          content = unavailableView("Page-specific data unavailable", "The documented QCL endpoints do not provide data for this view.");
+          copy = "No page-specific content can be grounded in the available endpoint contract.";
+        }
+        $("#pagePanelCopy").textContent = copy;
+        $("#pageDescription").textContent = copy;
+        $("#pageContent").innerHTML = content;
+      }
+      async function loadData() {
+        if (state.loadingData) { state.dataRequestPending = true; return; }
+        state.loadingData = true;
+        state.dataError = "";
+        dataStatus.textContent = "Loading league data…";
+        renderTable();
+        renderPage();
+        try {
+          if (!session) throw new Error("No qcl-session value found in local storage.");
+          if (!state.edition) throw new Error("Active edition is unavailable until signed season status loads.");
+          const result = await request("/api/qcl/data", { params: { edition: state.edition, season: state.season } });
+          state.headers = Array.isArray(result.headers) ? result.headers : [];
+          state.rows = Array.isArray(result.rows) ? result.rows : [];
+          state.edition = result.edition || state.edition;
+          if (result.season !== undefined && result.season !== null && result.season !== "") state.season = String(seasonValue(result.season));
+          state.editions = Array.isArray(result.available_editions) ? result.available_editions : [];
+          updateEditionChoices();
+          populateSeasons();
+          dataStatus.textContent = state.rows.length ? `Feed received · ${state.edition} · Season ${state.season || "All"}` : `Feed received · ${state.edition} · Season ${state.season || "All"} · no rows`;
+          $("#tableMeta").textContent = `${state.edition} / SEASON ${state.season || "ALL"}`;
+        } catch (error) {
+          state.headers = [];
+          state.rows = [];
+          state.dataError = error.message;
+          dataStatus.textContent = `Could not load league data: ${error.message}`;
+          $("#tableMeta").textContent = "FEED UNAVAILABLE";
+          $("#dataRegion").setAttribute("aria-busy", "false");
+          $("#dataRegion").innerHTML = `<div class="empty-state error"><strong>League feed unavailable</strong><p>${esc(error.message)} Check the session or server, then retry.</p><button type="button" data-retry>Retry data</button></div>`;
+          $("#rowCount").innerHTML = "<strong>—</strong> rows";
+          return;
+        } finally {
+          state.loadingData = false;
+          state.dataReady = true;
+          if (state.rows.length === 0 && !dataStatus.textContent.startsWith("Could not")) renderTable();
+          renderPage();
+          if (state.dataRequestPending) {
+            state.dataRequestPending = false;
+            loadData();
+          }
+        }
+        renderTable();
+      }
+      function canSeePage(page) {
+        if (page === "🏢 GM Desk") return state.status?.can_see_gm_desk === true;
+        if (page === "👥 Players Desk") return state.status?.can_see_players_desk === true;
+        return PAGES.slice(0, 29).includes(page);
+      }
+      function renderNavigation() {
+        $("#pageNav").innerHTML = PAGES.slice(0, 29).map((page) => `<button type="button" data-page="${esc(page)}" ${page === state.page ? 'aria-current="page"' : ""}>${esc(page)}</button>`).join("");
+        const rolePages = [];
+        if (state.status?.can_see_gm_desk === true) rolePages.push("🏢 GM Desk");
+        if (state.status?.can_see_players_desk === true) rolePages.push("👥 Players Desk");
+        $("#mobilePageSelect").innerHTML = [...PAGES.slice(0, 29), ...rolePages].map((page) => `<option value="${esc(page)}">${esc(page)}</option>`).join("");
+        $("#mobilePageSelect").value = state.page;
+      }
+      function selectPage(page) {
+        if (!PAGES.includes(page) || !canSeePage(page)) return;
+        state.page = page;
+        $("#pageTitle").textContent = page;
+        if (["🏦 The Vault", "📖 Record Book & Milestones"].includes(page) && state.season) {
+          state.season = "";
+          $("#seasonSelect").value = "";
+          loadData();
+        }
+        renderNavigation();
+        renderPage();
+      }
+      function initNavigation() {
+        renderNavigation();
+        selectPage(state.page);
+      }
+      async function closeSeason() {
+        const button = $("#confirmClose");
+        button.disabled = true;
+        $("#seasonActionNote").textContent = "Closing season…";
+        $("#seasonActionNote").classList.remove("error");
+        try {
+          if (state.status?.is_commissioner !== true) throw new Error("Commissioner permission is not present in signed season status.");
+          if (state.status?.ready !== true) throw new Error("Season status does not report that configuration is ready.");
+          await request("/api/qcl/seasons/close", { method: "POST", body: {} });
+          $("#closeDialog").close();
+          $("#seasonActionNote").textContent = "Season closed and archived.";
+          await loadStatus();
+          const active = state.status?.active;
+          if (active?.game_edition) state.edition = String(active.game_edition);
+          state.season = "";
+          updateEditionChoices();
+          populateSeasons(true);
+          if (["🏦 The Vault", "📖 Record Book & Milestones"].includes(state.page)) {
+            state.season = "";
+            $("#seasonSelect").value = "";
+          }
+          await loadData();
+        } catch (error) {
+          $("#seasonActionNote").textContent = error.message;
+          $("#seasonActionNote").classList.add("error");
+        } finally {
+          button.disabled = false;
+        }
+      }
+      $("#seasonSelect").addEventListener("change", (event) => { state.season = event.target.value; loadData(); });
+      $("#editionSelect").addEventListener("change", (event) => {
+        state.edition = event.target.value;
+        const active = activeForEdition(state.edition);
+        const archivalView = ["🏦 The Vault", "📖 Record Book & Milestones"].includes(state.page);
+        state.season = archivalView ? "" : (active?.season_number !== undefined ? String(active.season_number) : "");
+        populateSeasons(archivalView ? false : Boolean(active));
+        $("#editionBadge").textContent = state.edition || "—";
+        loadData();
+      });
+      $("#refreshButton").addEventListener("click", async () => { await loadStatus(); await loadData(); });
+      $("#rowSearch").addEventListener("input", () => { renderTable(); renderPage(); });
+      $("#pageNav").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-page]");
+        if (button) selectPage(button.dataset.page);
+      });
+      $("#roleDeskNav").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-page]");
+        if (button) selectPage(button.dataset.page);
+      });
+      $("#mobilePageSelect").addEventListener("change", (event) => selectPage(event.target.value));
+      $("#pageContent").addEventListener("change", (event) => {
+        const select = event.target.closest("[data-view-select]");
+        if (!select) return;
+        if (select.dataset.viewSelect === "h2h-a") state.headToHeadA = select.value;
+        if (select.dataset.viewSelect === "h2h-b") state.headToHeadB = select.value;
+        renderPage();
+      });
+      $("#dataRegion").addEventListener("click", (event) => { if (event.target.closest("[data-retry]")) loadData(); });
+      $("#closeSeasonButton").addEventListener("click", () => $("#closeDialog").showModal());
+      $("#cancelClose").addEventListener("click", () => $("#closeDialog").close());
+      $("#confirmClose").addEventListener("click", closeSeason);
+      $("#closeDialog").addEventListener("click", (event) => {
+        if (event.target === $("#closeDialog")) $("#closeDialog").close();
+      });
+
+      initNavigation();
+      updateEditionChoices();
+      if (session) setSession("Signed session found", "ready");
+      else setSession("No QCL session", "error");
+      loadStatus().finally(loadData);
+    })();
+  </script>
+</body>
+</html>
