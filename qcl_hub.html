@@ -281,7 +281,8 @@
       </div>
       <div class="head-actions">
         <div id="sessionState" class="session-state" data-state="checking" aria-live="polite"><span class="session-dot" aria-hidden="true"></span><span id="sessionText">Checking session</span></div>
-        <a class="activity-link" href="/activity" aria-label="Return to the existing QTCG Activity">Back to QTCG Activity</a>
+        <a class="activity-link" href="/qcl/" aria-label="Open the full QCL experience">Full QCL</a>
+        <a class="activity-link" href="/qtcg" aria-label="Return to the existing QTCG Activity">Back to QTCG Activity</a>
       </div>
     </header>
 
@@ -708,7 +709,7 @@
       function teamTable(teams) { return teams.map((team) => [team.team, team.wins ?? "—", team.losses ?? "—", formatPct(team.pct), formatNumber(team.ppg), formatPct(team.sos)]); }
       function gameCount(rows) { return new Set(rows.map((row, index) => rowGameKey(row, index))).size; }
       function unavailableView(title, explanation, qtcg = false) {
-        return `<div class="view-note unavailable"><strong>${esc(title)}</strong><br>${esc(explanation)}${qtcg ? '<div class="view-actions"><a class="view-link" href="/activity">Open QTCG Activity</a></div>' : ""}</div>`;
+        return `<div class="view-note unavailable"><strong>${esc(title)}</strong><br>${esc(explanation)}${qtcg ? '<div class="view-actions"><a class="view-link" href="/qtcg">Open QTCG Activity</a></div>' : ""}</div>`;
       }
       function comingSoonView(title, explanation) {
         return `<div class="coming-soon-card"><span class="coming-soon-chip">COMING SOON</span><strong>${esc(title)}</strong><p>${esc(explanation)}</p></div>`;
@@ -717,7 +718,7 @@
         return `<div class="view-note coming-soon-note"><span class="coming-soon-chip">COMING SOON</span><span>${esc(explanation)}</span></div>`;
       }
       function sessionRequiredView() {
-        return '<div class="view-empty session-required"><span class="coming-soon-chip">SESSION REQUIRED</span><strong>Open QTCG Activity to connect</strong><p>This league page needs your signed Discord session. Open QTCG Activity, then return here; no second login is needed.</p><a class="view-link" href="/activity">Open QTCG Activity</a></div>';
+        return '<div class="view-empty session-required"><span class="coming-soon-chip">SESSION REQUIRED</span><strong>Open QTCG Activity to connect</strong><p>This league page needs your signed Discord session. Open QTCG Activity, then return here; no second login is needed.</p><a class="view-link" href="/qtcg">Open QTCG Activity</a></div>';
       }
       function filteredRows() {
         const query = $("#rowSearch").value.trim().toLowerCase();
@@ -933,7 +934,7 @@
           $("#tableMeta").textContent = "FEED UNAVAILABLE";
           $("#dataRegion").setAttribute("aria-busy", "false");
           $("#dataRegion").innerHTML = state.dataSessionRequired
-            ? '<div class="empty-state error"><strong>QCL session required</strong><p>Open QTCG Activity, then return here. This page uses the existing signed session.</p><a class="view-link" href="/activity">Open QTCG Activity</a><br><button type="button" data-retry>Retry data</button></div>'
+            ? '<div class="empty-state error"><strong>QCL session required</strong><p>Open QTCG Activity, then return here. This page uses the existing signed session.</p><a class="view-link" href="/qtcg">Open QTCG Activity</a><br><button type="button" data-retry>Retry data</button></div>'
             : `<div class="empty-state error"><strong>League feed unavailable</strong><p>${esc(error.message)} Check the server, then retry.</p><button type="button" data-retry>Retry data</button></div>`;
           $("#rowCount").innerHTML = "<strong>—</strong> rows";
           return;

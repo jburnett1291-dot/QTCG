@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS qcl-source
 
-ARG QCL_SOURCE_REF=56599f428292926753bc2d65ce35babfca964838
+ARG QCL_SOURCE_REF=f480c3e04805655f0c346a362acb3bf852d80559
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
