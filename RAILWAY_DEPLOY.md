@@ -58,12 +58,26 @@ named by `GITHUB_REPO` (QTCG Activity saves and draft state) and
 `GITHUB_REPO` pointed at the QTCG Activity repository; the season API targets
 QCL separately.
 
-## QCL season rollover
+## QCL Streamlit hub and season rollover
 
-The QCL Stats Hub is served at `/qcl` and is linked from the Activity
-navigation. Open the Activity on the same hostname first to establish its
-signed session; the hub reuses that session and does not add a second login.
-The season-close action is limited to IDs in `DRAFT_ADMIN_IDS`.
+The original QCL Streamlit app is served at `/qcl` from the QCL source commit
+pinned by `QCL_SOURCE_REF` in the Dockerfile. QTCG runs it as a private local
+process and proxies its HTTP and WebSocket traffic through the same hostname.
+Its sidebar, styles, pages, and interactions therefore come from the QCL source
+app rather than a separate QTCG reimplementation. When QCL's `main` changes,
+update `QCL_SOURCE_REF` to the new commit and redeploy QTCG.
+
+The existing QTCG-based season administration page remains available at
+`/qcl-admin`, linked from the Activity navigation. Open the Activity on the
+same hostname first to establish its signed session; the admin page reuses that
+session and does not add a second login. The season-close action is limited to
+IDs in `DRAFT_ADMIN_IDS`.
+
+For QCL's optional Discord login, register
+`https://<RAILWAY_PUBLIC_DOMAIN>/qcl/` as an OAuth redirect URI in the Discord
+Developer Portal. The app derives this callback from Railway's public-domain
+variable. Set `QCL_STREAMLIT_REDIRECT_URI` in Railway if you use a different
+custom domain or need to override the callback.
 
 The public QCL repository contains `qcl_season_config.json`. It starts with
 2K26 Season One as the active workbook and 2K27 Season One as the next
@@ -71,12 +85,12 @@ workbook. Closing a season commits its CSV snapshot to QCL, archives the
 closed workbook in Drive, and creates a fresh workbook for the configured next
 edition and season. Later closures increment the season number.
 
-In the QCL Streamlit deployment, set `QCL_DATA_API_URL` to
-`https://YOUR-QTCG-RAILWAY-DOMAIN/api/qcl/public-data` before the first
-rollover. This public read-only endpoint returns only the active `Raw Data`
-tab. Drive copies do not retain the original workbook's file-level sharing, so
-this avoids making the entire workbook—and its Registry tab—public. The QCL
-app keeps its direct CSV feed as a legacy fallback when this variable is unset.
+The embedded app reads stats through QTCG's internal
+`/api/qcl/public-data` endpoint. This public read-only endpoint returns only the
+active `Raw Data` tab. Drive copies do not retain the original workbook's
+file-level sharing, so this avoids making the entire workbook—and its Registry
+tab—public. The QCL app keeps its direct CSV feed as a legacy fallback when the
+internal endpoint is not configured.
 
 Keep the `Raw Data` header row intact and include distinct `Game Edition` and
 `Season` columns. The close action validates that all populated rows match the
@@ -87,6 +101,7 @@ For deployment checks, also open:
 
 ```text
 https://YOUR-RAILWAY-DOMAIN/qcl
+https://YOUR-RAILWAY-DOMAIN/qcl-admin
 https://YOUR-RAILWAY-DOMAIN/api/qcl/seasons/status
 ```
 
@@ -95,6 +110,7 @@ configuration, add the listed Railway variables before closing a season.
 
 The current backend exchanges Discord authorization codes with the redirect
 URI `https://127.0.0.1`; keep that exact URI in the Discord Developer Portal.
+
 
 ## Changes made
 

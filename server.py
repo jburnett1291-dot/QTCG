@@ -28,10 +28,12 @@ import random
 import asyncio
 import datetime as _datetime
 import socket
+import sys
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 import aiohttp
 from aiohttp import web
+from multidict import CIMultiDict
 from draft_operations import create_handlers
 from qcl_seasons import (
     PUBLIC_QCL_REPO,
@@ -51,6 +53,9 @@ GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "").strip() or "jburnett1291-dot/QCL"
 BASE_DIR = Path(__file__).resolve().parent
 QCL_HUB_PATH = BASE_DIR / "qcl_hub.html"
+QCL_STREAMLIT_SOURCE_DIR = Path(
+    os.environ.get("QCL_STREAMLIT_SOURCE_DIR", "/opt/qcl-source")
+)
 
 import re as _re
 
@@ -188,6 +193,8 @@ _DRAFT_ADMIN_IDS = frozenset({
     "1337614287920959609",
 })
 PORT = int(os.environ.get("PORT", "8787"))
+QCL_STREAMLIT_PORT = int(os.environ.get("QCL_STREAMLIT_PORT", "8501"))
+QCL_STREAMLIT_BASE_PATH = "/qcl"
 
 # odds MUST match the bot's TVT_ODDS / TVT_PACK_SIZE
 ODDS = [("Common", 0.50), ("Uncommon", 0.30), ("Rare", 0.15),
@@ -1590,9 +1597,271 @@ async def serve_qtcg(request):
         'background:#17212b;color:#f5f8fb;font-weight:700;'
         'text-decoration:none;border:1px solid #34404c">QCL Hub</a>'
     )
-    html = SPA_HTML.replace("</nav>", hub_link + "</nav>", 1)
+    admin_link = (
+        '<a href="/qcl-admin" aria-label="Open QCL Season Admin" '
+        'style="display:inline-flex;align-items:center;justify-content:center;'
+        'padding:8px 12px;border-radius:9px;margin-left:6px;'
+        'background:#17212b;color:#f5f8fb;font-weight:700;'
+        'text-decoration:none;border:1px solid #34404c">Season Admin</a>'
+    )
+    html = SPA_HTML.replace("</nav>", hub_link + admin_link + "</nav>", 1)
     return web.Response(text=html, content_type="text/html",
                         headers={"Cache-Control": "no-store, max-age=0"})
+
+
+_PROXY_HOP_HEADERS = {
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade",
+}
+
+
+def _proxy_headers(source, extra_blocked=()):
+    """Copy end-to-end headers while dropping HTTP hop-by-hop fields."""
+    blocked = _PROXY_HOP_HEADERS | {str(name).lower() for name in extra_blocked}
+    connection = source.get("Connection", "")
+    blocked.update(name.strip().lower() for name in connection.split(",") if name.strip())
+    result = CIMultiDict()
+    for name, value in source.items():
+        if name.lower() not in blocked:
+            result.add(name, value)
+    return result
+
+
+def _qcl_streamlit_env():
+    """Point the bundled QCL app at this service without exposing private data."""
+    env = os.environ.copy()
+    env.setdefault(
+        "QCL_DATA_API_URL",
+        f"http://127.0.0.1:{PORT}/api/qcl/public-data",
+    )
+    public_domain = env.get("RAILWAY_PUBLIC_DOMAIN", "").strip().strip("/")
+    if public_domain:
+        public_origin = f"https://{public_domain}"
+        env.setdefault("QCL_SAVE_API_URL", public_origin)
+        env["DISCORD_REDIRECT_URI"] = (
+            env.get("QCL_STREAMLIT_REDIRECT_URI", "").strip()
+            or f"{public_origin}{QCL_STREAMLIT_BASE_PATH}/"
+        )
+    elif env.get("QCL_STREAMLIT_REDIRECT_URI", "").strip():
+        env["DISCORD_REDIRECT_URI"] = env["QCL_STREAMLIT_REDIRECT_URI"].strip()
+    return env
+
+
+async def start_qcl_streamlit(app):
+    """Run the source QCL Streamlit app privately behind the QTCG HTTP server."""
+    app["qcl_streamlit_process"] = None
+    app["qcl_streamlit_session"] = aiohttp.ClientSession(
+        auto_decompress=False,
+        timeout=aiohttp.ClientTimeout(total=None, sock_connect=10),
+    )
+    source_app = QCL_STREAMLIT_SOURCE_DIR / "app.py"
+    if not source_app.is_file():
+        print(
+            f"[qcl-streamlit] source app not found at {source_app}; "
+            "the QTCG Activity will stay available, but /qcl is disabled"
+        )
+        return
+
+    command = [
+        sys.executable, "-m", "streamlit", "run", str(source_app),
+        f"--server.address=127.0.0.1",
+        f"--server.port={QCL_STREAMLIT_PORT}",
+        f"--server.baseUrlPath={QCL_STREAMLIT_BASE_PATH}",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false",
+    ]
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=str(QCL_STREAMLIT_SOURCE_DIR),
+            env=_qcl_streamlit_env(),
+        )
+    except Exception as exc:
+        print(f"[qcl-streamlit] failed to start: {type(exc).__name__}: {exc}")
+        return
+
+    app["qcl_streamlit_process"] = process
+    session = app["qcl_streamlit_session"]
+    health_urls = (
+        f"http://127.0.0.1:{QCL_STREAMLIT_PORT}"
+        f"{QCL_STREAMLIT_BASE_PATH}/_stcore/health",
+        f"http://127.0.0.1:{QCL_STREAMLIT_PORT}/_stcore/health",
+    )
+    for _ in range(60):
+        if process.returncode is not None:
+            print(f"[qcl-streamlit] exited during startup with code {process.returncode}")
+            return
+        for health_url in health_urls:
+            try:
+                async with session.get(health_url) as response:
+                    if response.status == 200:
+                        print("[qcl-streamlit] source app is ready behind /qcl")
+                        return
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                pass
+        await asyncio.sleep(0.5)
+    print("[qcl-streamlit] startup is still pending; /qcl will proxy when ready")
+
+
+async def stop_qcl_streamlit(app):
+    process = app.get("qcl_streamlit_process")
+    if process and process.returncode is None:
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+    session = app.get("qcl_streamlit_session")
+    if session and not session.closed:
+        await session.close()
+
+
+async def _proxy_qcl_streamlit_websocket(request, target_url, headers, session):
+    websocket_headers = _proxy_headers(
+        headers,
+        extra_blocked={
+            "sec-websocket-key", "sec-websocket-version",
+            "sec-websocket-extensions", "sec-websocket-protocol",
+        },
+    )
+    protocols = tuple(
+        value.strip()
+        for value in request.headers.get("Sec-WebSocket-Protocol", "").split(",")
+        if value.strip()
+    )
+    try:
+        upstream = await session.ws_connect(
+            target_url,
+            headers=websocket_headers,
+            protocols=protocols,
+            max_msg_size=0,
+            heartbeat=30,
+        )
+    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        return web.Response(
+            status=502,
+            text=f"QCL Streamlit WebSocket could not connect: {type(exc).__name__}",
+            content_type="text/plain",
+        )
+
+    downstream = web.WebSocketResponse(
+        protocols=(upstream.protocol,) if upstream.protocol else (),
+        max_msg_size=0,
+        heartbeat=30,
+    )
+    await downstream.prepare(request)
+
+    async def relay(source, destination):
+        async for message in source:
+            if message.type == aiohttp.WSMsgType.TEXT:
+                await destination.send_str(message.data)
+            elif message.type == aiohttp.WSMsgType.BINARY:
+                await destination.send_bytes(message.data)
+            elif message.type in (
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSED,
+                aiohttp.WSMsgType.ERROR,
+            ):
+                break
+
+    relays = [
+        asyncio.create_task(relay(downstream, upstream)),
+        asyncio.create_task(relay(upstream, downstream)),
+    ]
+    try:
+        _, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*relays, return_exceptions=True)
+    finally:
+        await downstream.close()
+        await upstream.close()
+    return downstream
+
+
+async def proxy_qcl_streamlit(request):
+    """Reverse-proxy the complete QCL app (including Streamlit WebSockets)."""
+    process = request.app.get("qcl_streamlit_process")
+    if process is None or process.returncode is not None:
+        return web.Response(
+            status=503,
+            text="QCL Streamlit is unavailable. Check the QTCG deployment logs.",
+            content_type="text/plain",
+        )
+
+    target_url = (
+        f"http://127.0.0.1:{QCL_STREAMLIT_PORT}{request.rel_url}"
+    )
+    headers = _proxy_headers(request.headers)
+    headers["X-Forwarded-Proto"] = request.headers.get(
+        "X-Forwarded-Proto", request.scheme
+    )
+    headers["X-Forwarded-Host"] = request.headers.get(
+        "X-Forwarded-Host", request.headers.get("Host", "")
+    )
+    if request.remote:
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        headers["X-Forwarded-For"] = (
+            f"{forwarded_for}, {request.remote}" if forwarded_for else request.remote
+        )
+
+    session = request.app["qcl_streamlit_session"]
+    if request.headers.get("Upgrade", "").lower() == "websocket":
+        return await _proxy_qcl_streamlit_websocket(
+            request, target_url, headers, session
+        )
+
+    body = request.content if request.can_read_body else None
+    try:
+        upstream = await session.request(
+            request.method,
+            target_url,
+            headers=headers,
+            data=body,
+            allow_redirects=False,
+        )
+    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        return web.Response(
+            status=502,
+            text=f"QCL Streamlit request failed: {type(exc).__name__}",
+            content_type="text/plain",
+        )
+
+    response_headers = _proxy_headers(upstream.headers)
+    location = response_headers.get("Location")
+    if location:
+        parsed_location = urlsplit(location)
+        try:
+            internal_redirect = (
+                parsed_location.hostname in {"127.0.0.1", "localhost"}
+                and parsed_location.port == QCL_STREAMLIT_PORT
+            )
+        except ValueError:
+            internal_redirect = False
+        if internal_redirect:
+            scheme = request.headers.get(
+                "X-Forwarded-Proto", request.scheme
+            ).split(",", 1)[0].strip()
+            host = request.headers.get("Host", "")
+            if host:
+                response_headers["Location"] = urlunsplit((
+                    scheme, host, parsed_location.path,
+                    parsed_location.query, parsed_location.fragment,
+                ))
+    response = web.StreamResponse(
+        status=upstream.status,
+        reason=upstream.reason,
+        headers=response_headers,
+    )
+    await response.prepare(request)
+    if request.method != "HEAD" and upstream.status not in (204, 304):
+        async for chunk in upstream.content.iter_chunked(64 * 1024):
+            await response.write(chunk)
+    await response.write_eof()
+    upstream.release()
+    return response
+
 
 async def serve_qcl_hub(request):
     return web.Response(
@@ -1653,6 +1922,8 @@ async def _draft_non_action_mutation_lock(request, handler):
 app = web.Application(middlewares=[
     request_diagnostics_middleware, _draft_non_action_mutation_lock,
 ])
+app.on_startup.append(start_qcl_streamlit)
+app.on_cleanup.append(stop_qcl_streamlit)
 
 # --- 1. API ROUTES (Must be registered first) ---
 app.router.add_post("/api/login", login)
@@ -1701,8 +1972,11 @@ app.router.add_get("/warroom", serve_qtcg)
 app.router.add_get("/warroom/war-room", serve_qtcg)
 app.router.add_get("/resources", serve_resources)
 app.router.add_get("/diagnostics", serve_diagnostics)
-app.router.add_get("/qcl", serve_qcl_hub)
-app.router.add_get("/qcl/", serve_qcl_hub)
+app.router.add_get("/qcl-admin", serve_qcl_hub)
+app.router.add_get("/qcl-admin/", serve_qcl_hub)
+app.router.add_route("*", "/qcl", proxy_qcl_streamlit)
+app.router.add_route("*", "/qcl/", proxy_qcl_streamlit)
+app.router.add_route("*", "/qcl/{tail:.*}", proxy_qcl_streamlit)
 app.router.add_get("/coach", serve_qtcg)
 app.router.add_get("/director", serve_qtcg)
 app.router.add_get("/assets/discord-embedded-sdk.js", serve_discord_sdk)
