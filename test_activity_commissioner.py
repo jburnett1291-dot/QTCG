@@ -214,6 +214,16 @@ class ActivityAndCommissionerRouteTests(unittest.TestCase):
         list_files.assert_not_awaited()
         read_file.assert_not_awaited()
 
+    def test_commissioner_data_route_exposes_only_read_methods(self):
+        methods = {
+            route.method
+            for route in server.app.router.routes()
+            if route.resource.canonical == "/api/commissioner/data"
+        }
+
+        self.assertIn("GET", methods)
+        self.assertTrue(methods.issubset({"GET", "HEAD"}))
+
     def test_allowlisted_commissioner_can_read_without_any_write(self):
         commissioner_id = sorted(server._DRAFT_ADMIN_IDS)[0]
         FakeGitHubSession.calls.clear()
