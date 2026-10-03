@@ -1965,8 +1965,8 @@ app.router.add_options("/api/img", proxy_image)
 
 # --- 2. FRONTEND & STATIC ROUTES ---
 # Canonical API routes above must remain ahead of this static catch-all.
-# Every Activity entry point serves the exact same SPA document.
-app.router.add_get("/", serve_qtcg)
+# The domain root opens QCL; the QTCG Activity remains available separately.
+app.router.add_get("/", serve_qcl_home)
 app.router.add_get("/activity", serve_qtcg)
 app.router.add_get("/qtcg", serve_qtcg)
 app.router.add_get("/draft", serve_qtcg)
