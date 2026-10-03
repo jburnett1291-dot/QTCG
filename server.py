@@ -342,6 +342,192 @@ def _draft_is_admin(uid):
     return str(uid) in _DRAFT_ADMIN_IDS
 
 
+_COMMISSIONER_DATA_CACHE = {"expires_at": 0.0, "payload": None}
+_COMMISSIONER_DATA_CACHE_SECONDS = 30
+_COMMISSIONER_DRAFT_ROOTS = ("Draft Players/", "draft_players/")
+_COMMISSIONER_DRAFT_REPO = os.environ.get(
+    "QTCG_DRAFT_FILES_REPO", "jburnett1291-dot/QTCG"
+).strip()
+_COMMISSIONER_TEXT_PREVIEW_LIMIT = 24_000
+_COMMISSIONER_MAX_FILES = 80
+_COMMISSIONER_MAX_SOURCE_BYTES = 1_000_000
+
+
+async def _commissioner_github_bytes(session, repo, path, branch):
+    """Read a fixed server-selected GitHub path without accepting client paths."""
+    if not GH_TOKEN:
+        raise RuntimeError("GitHub access is not configured.")
+    url = f"{_GH_API}/repos/{repo}/contents/{quote(path, safe='/')}"
+    headers = {
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept": "application/vnd.github.raw+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    async with session.get(url, params={"ref": branch}, headers=headers) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"GitHub could not read {repo}/{path} (HTTP {response.status})."
+            )
+        chunks = []
+        total = 0
+        async for chunk in response.content.iter_chunked(64 * 1024):
+            total += len(chunk)
+            if total > _COMMISSIONER_MAX_SOURCE_BYTES:
+                raise RuntimeError(f"GitHub file {path} exceeds the preview limit.")
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+async def _commissioner_draft_files(session, branch):
+    """Return bounded previews for the player and coach files in QTCG."""
+    if not GH_TOKEN:
+        raise RuntimeError("GitHub access is not configured.")
+    url = (
+        f"{_GH_API}/repos/{_COMMISSIONER_DRAFT_REPO}/git/trees/"
+        f"{quote(branch, safe='')}"
+    )
+    headers = {
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    async with session.get(
+        url, params={"recursive": "1"}, headers=headers
+    ) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"GitHub could not list QTCG draft files (HTTP {response.status})."
+            )
+        tree_payload = await response.json()
+    if tree_payload.get("truncated"):
+        raise RuntimeError("GitHub returned an incomplete QTCG draft file list.")
+
+    entries = [
+        item for item in tree_payload.get("tree", [])
+        if item.get("type") == "blob"
+        and any(
+            str(item.get("path", "")).startswith(root)
+            for root in _COMMISSIONER_DRAFT_ROOTS
+        )
+    ][:_COMMISSIONER_MAX_FILES]
+    binary_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf"}
+    file_read_limit = asyncio.Semaphore(8)
+
+    async def read_entry(item):
+        path = str(item.get("path", ""))
+        size = int(item.get("size") or 0)
+        lower_path = path.lower()
+        is_coach_file = "/coaches/" in f"/{lower_path}/"
+        suffix = Path(path).suffix.lower()
+        text = None
+        preview_note = ""
+        if suffix in binary_suffixes:
+            preview_note = "Open this file in the QTCG repository."
+        elif size > _COMMISSIONER_TEXT_PREVIEW_LIMIT:
+            preview_note = "This file is too large to preview here."
+        else:
+            try:
+                async with file_read_limit:
+                    content = await _commissioner_github_bytes(
+                        session, _COMMISSIONER_DRAFT_REPO, path, branch
+                    )
+                text = content.decode("utf-8")
+            except (
+                UnicodeDecodeError,
+                aiohttp.ClientError,
+                asyncio.TimeoutError,
+                RuntimeError,
+            ) as exc:
+                preview_note = str(exc)
+        return {
+            "path": path,
+            "size": size,
+            "kind": "coach" if is_coach_file else "player",
+            "text": text,
+            "preview_note": preview_note,
+            "url": (
+                f"https://github.com/{_COMMISSIONER_DRAFT_REPO}/"
+                f"blob/{quote(branch, safe='')}/"
+                f"{quote(path, safe='/')}"
+            ),
+        }
+
+    return await asyncio.gather(*(read_entry(item) for item in entries))
+
+
+async def commissioner_status(request):
+    identity = _draft_session(request)
+    if not identity:
+        return _cors(web.json_response(
+            {"ok": False, "error": "Sign-in required."}, status=401
+        ))
+    return _cors(web.json_response({
+        "ok": True,
+        "is_commissioner": _draft_is_admin(identity.get("id")),
+    }))
+
+
+async def commissioner_data(request):
+    identity = _draft_session(request)
+    if not identity:
+        return _cors(web.json_response(
+            {"ok": False, "error": "Sign-in required."}, status=401
+        ))
+    if not _draft_is_admin(identity.get("id")):
+        return _cors(web.json_response(
+            {"ok": False, "error": "Commissioner access required."}, status=403
+        ))
+
+    cached = _COMMISSIONER_DATA_CACHE
+    if cached["payload"] and time.time() < cached["expires_at"]:
+        return _cors(web.json_response(cached["payload"]))
+    if not GH_TOKEN:
+        return _cors(web.json_response(
+            {"ok": False, "error": "GitHub access is not configured."}, status=503
+        ))
+
+    draft_branch = os.environ.get("QTCG_DRAFT_FILES_BRANCH", "main")
+    registry_repo = os.environ.get("QCL_REGISTRY_REPO", PUBLIC_QCL_REPO).strip()
+    registry_branch = os.environ.get("QCL_REGISTRY_BRANCH", "main")
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as session:
+            draft_files = await _commissioner_draft_files(session, draft_branch)
+            registration_bytes, legacy_bytes = await asyncio.gather(
+                _commissioner_github_bytes(
+                    session, registry_repo, "qcl_registrations.json",
+                    registry_branch,
+                ),
+                _commissioner_github_bytes(
+                    session, registry_repo, "registrations.json",
+                    registry_branch,
+                ),
+            )
+        registrations = json.loads(registration_bytes.decode("utf-8"))
+        legacy_registrations = json.loads(legacy_bytes.decode("utf-8"))
+        if not isinstance(registrations, dict) or not isinstance(legacy_registrations, dict):
+            raise RuntimeError("QCL registration files must contain JSON objects.")
+        payload = {
+            "ok": True,
+            "draft_files": draft_files,
+            "qcl_registrations": registrations,
+            "legacy_registrations": legacy_registrations,
+        }
+        cached.update({
+            "expires_at": time.time() + _COMMISSIONER_DATA_CACHE_SECONDS,
+            "payload": payload,
+        })
+        return _cors(web.json_response(payload))
+    except (
+        aiohttp.ClientError, asyncio.TimeoutError, UnicodeDecodeError,
+        json.JSONDecodeError, RuntimeError, ValueError,
+    ) as exc:
+        return _cors(web.json_response(
+            {"ok": False, "error": str(exc)[:300]}, status=502
+        ))
+
+
 def _draft_team_for_user(draft, uid):
     uid = str(uid)
     return next(
@@ -1603,6 +1789,18 @@ async def serve_qtcg(request):
                         headers={"Cache-Control": "no-store, max-age=0"})
 
 
+async def serve_activity(request):
+    """Open the shared QCL app while preserving only host-supplied parameters."""
+    destination = request.rel_url.with_path(f"{QCL_STREAMLIT_BASE_PATH}/")
+    return web.Response(
+        status=302,
+        headers={
+            "Location": str(destination),
+            "Cache-Control": "no-store, max-age=0",
+        },
+    )
+
+
 _PROXY_HOP_HEADERS = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
     "te", "trailer", "transfer-encoding", "upgrade",
@@ -1946,6 +2144,8 @@ app.router.add_get("/api/activity-diagnostics", activity_diagnostics)
 app.router.add_get("/api/diag", diag)
 app.router.add_get("/api/cards", cards_debug)
 app.router.add_get("/api/draft/state", draft_state)
+app.router.add_get("/api/commissioner/status", commissioner_status)
+app.router.add_get("/api/commissioner/data", commissioner_data)
 app.router.add_get("/api/qcl/seasons/status", qcl_season_handlers["status"])
 app.router.add_get("/api/qcl/data", qcl_season_handlers["data"])
 app.router.add_get("/api/qcl/public-data", qcl_season_handlers["public_data"])
@@ -1969,7 +2169,7 @@ app.router.add_options("/api/img", proxy_image)
 # Canonical API routes above must remain ahead of this static catch-all.
 # The domain root opens QCL; the QTCG Activity remains available separately.
 app.router.add_get("/", serve_qcl_home)
-app.router.add_get("/activity", serve_qtcg)
+app.router.add_get("/activity", serve_activity)
 app.router.add_get("/qtcg", serve_qtcg)
 app.router.add_get("/draft", serve_qtcg)
 app.router.add_get("/war-room", serve_qtcg)
