@@ -84,6 +84,11 @@
       box-shadow: inset 2px 0 var(--lime);
     }
     .page-nav button:hover:not(:disabled) { border-color: var(--line); background: #ffffff08; }
+    .page-nav .nav-status {
+      flex: 0 0 auto; margin-left: auto; padding: 2px 5px; border: 1px solid #f9ff2e35;
+      border-radius: 999px; color: #e6dc80; font-size: 7px; font-weight: 900;
+      letter-spacing: .06em; line-height: 1.2; text-transform: uppercase;
+    }
     .desk-nav { padding: 10px 0 13px; border-top: 1px solid var(--line); }
     .desk-nav h3 { margin: 0 0 7px; color: #9cacc7; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; }
     .desk-nav button {
@@ -181,6 +186,24 @@
     .view-link { display: inline-flex; align-items: center; min-height: 35px; padding: 6px 10px; border: 1px solid #f9ff2e4d; border-radius: 7px; color: var(--lime); background: #f9ff2e0c; text-decoration: none; font-size: 10px; font-weight: 850; }
     .view-empty { padding: 18px 12px; color: var(--muted); text-align: center; font-size: 10px; }
     .view-empty strong { display: block; margin-bottom: 4px; color: #e3eafa; font-size: 12px; }
+    .coming-soon-card {
+      padding: 20px 16px; border: 1px solid #f9ff2e35; border-radius: 9px;
+      background: linear-gradient(145deg, #f9ff2e0d, #0e1727); text-align: center;
+    }
+    .coming-soon-card strong { display: block; margin-top: 9px; color: #edf2ff; font-size: 14px; }
+    .coming-soon-card p { max-width: 520px; margin: 6px auto 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .coming-soon-chip {
+      display: inline-flex; align-items: center; padding: 3px 7px; border: 1px solid #f9ff2e40;
+      border-radius: 999px; color: var(--lime); font-size: 8px; font-weight: 900;
+      letter-spacing: .1em; line-height: 1.2; white-space: nowrap;
+    }
+    .view-note.coming-soon-note {
+      display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; padding: 10px;
+      border: 1px solid #f9ff2e24; border-left: 2px solid var(--lime); border-radius: 7px;
+      background: #f9ff2e08; color: #c8d2e2; line-height: 1.5;
+    }
+    .session-required .coming-soon-chip { color: #ffcf86; border-color: #ffbc7040; }
+    .session-required .view-link { margin-top: 10px; }
     .desk-nav [hidden] { display: none !important; }
     @media (max-width: 820px) {
       .view-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -258,7 +281,7 @@
       </div>
       <div class="head-actions">
         <div id="sessionState" class="session-state" data-state="checking" aria-live="polite"><span class="session-dot" aria-hidden="true"></span><span id="sessionText">Checking session</span></div>
-        <a class="activity-link" href="/" aria-label="Return to the existing QTCG Activity">Back to QTCG Activity</a>
+        <a class="activity-link" href="/activity" aria-label="Return to the existing QTCG Activity">Back to QTCG Activity</a>
       </div>
     </header>
 
@@ -352,12 +375,46 @@
         "👤 My Profile", "🎁 Open Packs", "🃏 Player Cards", "💬 Discord",
         "📖 Record Book & Milestones", "🏢 GM Desk", "👥 Players Desk"
       ];
+      const COMING_SOON_PAGES = {
+        "📰 News & Updates": {
+          title: "League news is coming soon",
+          explanation: "News and announcement feeds are not connected to this view yet."
+        },
+        "📝 Register": {
+          title: "Registration is coming soon",
+          explanation: "Registration and approval are not available here yet. This page does not collect or submit registration details."
+        },
+        "Film Terminal": {
+          title: "Film Terminal is coming soon",
+          explanation: "Film links, clips, and video details are not connected to this view yet."
+        },
+        "🔮 Oracle Predictor": {
+          title: "Oracle Predictor is coming soon",
+          explanation: "Prediction tools are not available yet. This page does not generate or save predicted outcomes."
+        },
+        "📈 Card Market": {
+          title: "Card Market is coming soon",
+          explanation: "Market listings, prices, and transactions are not connected to this view yet."
+        },
+        "💬 Discord": {
+          title: "Discord feed is coming soon",
+          explanation: "Discord messages and feed content are not available in this QCL view yet."
+        },
+        "🏆 Playoffs": {
+          title: "Playoff bracket is coming soon",
+          explanation: "The current QCL feed does not include playoff seeds, rounds, or series, so a bracket cannot be shown yet."
+        }
+      };
+      const ACTIVITY_PAGES = [
+        "🎴 Qwiks TCG", "🎮 QTCG Desk", "🧢 Draft Room", "🗂 My QTCG Binder",
+        "👤 My Profile", "🎁 Open Packs", "🃏 Player Cards"
+      ];
       const $ = (selector) => document.querySelector(selector);
       const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
       const session = localStorage.getItem("qcl-session") || "";
-      const state = { status: null, statusError: "", dataError: "", headers: [], rows: [], editions: [], edition: "", season: "", seasonInitialized: false, dataReady: false, dataRequestPending: false, page: "🏠 League Home & Awards", loadingData: false, loadingStatus: false, headToHeadA: "", headToHeadB: "" };
+      const state = { status: null, statusError: "", statusSessionRequired: false, dataError: "", dataSessionRequired: false, headers: [], rows: [], editions: [], edition: "", season: "", seasonInitialized: false, dataReady: false, dataRequestPending: false, page: "🏠 League Home & Awards", loadingData: false, loadingStatus: false, headToHeadA: "", headToHeadB: "" };
       const dataStatus = $("#dataStatus");
 
       function endpoint(path, params = {}) {
@@ -387,6 +444,10 @@
       function setSession(text, status) {
         $("#sessionText").textContent = text;
         $("#sessionState").dataset.state = status;
+      }
+      function isSessionFailure(error) {
+        const message = String(error?.message || "");
+        return !session || Number(error?.status) === 401 || /qcl-session|sign[- ]in required|invalid session|session not found/i.test(message);
       }
       function seasonValue(value) {
         if (value && typeof value === "object") return value.season_number ?? value.season_label ?? "—";
@@ -436,7 +497,9 @@
         $("#activeSeason").textContent = hasStatus ? seasonLabel(status.active) : "—";
         $("#nextSeason").textContent = hasStatus ? seasonLabel(status.next) : "—";
         $("#seasonCopy").textContent = !hasStatus
-          ? (state.statusError || "Season status unavailable. Retry to check signed league permissions.")
+          ? (state.statusSessionRequired || !session
+            ? "Open QTCG Activity to establish your signed session, then return here to load the season desk."
+            : state.statusError || "Season status unavailable. Retry to check signed league permissions.")
           : pending
             ? "The season CSV is archived. Clear the populated rows below the Raw Data header, then verify to activate the next season."
             : status.ready === true
@@ -481,13 +544,17 @@
           if (activeEdition && !state.edition) state.edition = String(activeEdition);
           updateEditionChoices();
           populateSeasons(!state.seasonInitialized);
+          state.statusSessionRequired = false;
           setSession("Signed QCL session", "ready");
           initNavigation();
           renderStatus();
         } catch (error) {
           state.status = null;
-          state.statusError = error.message;
-          setSession(session ? "Session check failed" : "No QCL session", "error");
+          state.statusSessionRequired = isSessionFailure(error);
+          state.statusError = state.statusSessionRequired
+            ? "Open QTCG Activity to establish your signed session, then return here."
+            : error.message;
+          setSession(state.statusSessionRequired ? "Session required" : "Session check failed", "error");
           $("#seasonActions").hidden = true;
           $("#activeSeason").textContent = "—";
           $("#nextSeason").textContent = "—";
@@ -641,7 +708,16 @@
       function teamTable(teams) { return teams.map((team) => [team.team, team.wins ?? "—", team.losses ?? "—", formatPct(team.pct), formatNumber(team.ppg), formatPct(team.sos)]); }
       function gameCount(rows) { return new Set(rows.map((row, index) => rowGameKey(row, index))).size; }
       function unavailableView(title, explanation, qtcg = false) {
-        return `<div class="view-note unavailable"><strong>${esc(title)}</strong><br>${esc(explanation)}${qtcg ? '<div class="view-actions"><a class="view-link" href="/">Open QTCG Activity</a></div>' : ""}</div>`;
+        return `<div class="view-note unavailable"><strong>${esc(title)}</strong><br>${esc(explanation)}${qtcg ? '<div class="view-actions"><a class="view-link" href="/activity">Open QTCG Activity</a></div>' : ""}</div>`;
+      }
+      function comingSoonView(title, explanation) {
+        return `<div class="coming-soon-card"><span class="coming-soon-chip">COMING SOON</span><strong>${esc(title)}</strong><p>${esc(explanation)}</p></div>`;
+      }
+      function comingSoonNote(explanation) {
+        return `<div class="view-note coming-soon-note"><span class="coming-soon-chip">COMING SOON</span><span>${esc(explanation)}</span></div>`;
+      }
+      function sessionRequiredView() {
+        return '<div class="view-empty session-required"><span class="coming-soon-chip">SESSION REQUIRED</span><strong>Open QTCG Activity to connect</strong><p>This league page needs your signed Discord session. Open QTCG Activity, then return here; no second login is needed.</p><a class="view-link" href="/activity">Open QTCG Activity</a></div>';
       }
       function filteredRows() {
         const query = $("#rowSearch").value.trim().toLowerCase();
@@ -677,6 +753,24 @@
         const page = state.page;
         const rows = filteredRows();
         $("#pagePanelTitle").textContent = page;
+        if (COMING_SOON_PAGES[page]) {
+          const upcoming = COMING_SOON_PAGES[page];
+          const copy = "This section is not available in the QCL view yet.";
+          $("#pagePanelCopy").textContent = copy;
+          $("#pageDescription").textContent = copy;
+          $("#pageContent").innerHTML = comingSoonView(upcoming.title, upcoming.explanation);
+          return;
+        }
+        if (ACTIVITY_PAGES.includes(page)) {
+          const explanation = page === "🧢 Draft Room"
+            ? "Draft operations, controls, and current-pick authorization remain in the existing QTCG Activity. This page does not change draft rules."
+            : "This QTCG feature remains in the existing Activity; QCL endpoints do not expose its collection, balance, profile, or pack state.";
+          const copy = "This QTCG feature is available in the existing Activity.";
+          $("#pagePanelCopy").textContent = copy;
+          $("#pageDescription").textContent = copy;
+          $("#pageContent").innerHTML = unavailableView("Continue in QTCG Activity", explanation, true);
+          return;
+        }
         if (state.loadingData || !state.dataReady) {
           const loadingCopy = `Loading ${state.edition || "selected edition"} league rows…`;
           $("#pagePanelCopy").textContent = loadingCopy;
@@ -685,10 +779,15 @@
           return;
         }
         if (state.dataError) {
-          const errorCopy = "League-backed page content requires a successful QCL data response.";
+          const needsSession = state.dataSessionRequired || state.statusSessionRequired;
+          const errorCopy = needsSession
+            ? "Open QTCG Activity to establish your signed session before loading league data."
+            : "League-backed page content could not be loaded from the QCL data service.";
           $("#pagePanelCopy").textContent = errorCopy;
           $("#pageDescription").textContent = errorCopy;
-          $("#pageContent").innerHTML = `<div class="view-empty"><strong>League data unavailable</strong>${esc(state.dataError)}</div>`;
+          $("#pageContent").innerHTML = needsSession
+            ? sessionRequiredView()
+            : `<div class="view-empty"><strong>League data unavailable</strong>${esc(state.dataError)}</div>`;
           return;
         }
         const players = aggregatePlayers(rows).sort((a, b) => (b.ppg ?? -Infinity) - (a.ppg ?? -Infinity) || a.player.localeCompare(b.player));
@@ -702,28 +801,7 @@
         const teamRows = teamTable(teams);
         let content = "";
         let copy = `Computed from ${rows.length.toLocaleString()} returned game rows · ${state.edition || "edition"} · ${state.season ? `Season ${state.season}` : "all seasons"}.`;
-        const unsupported = {
-          "📰 News & Updates": "News and announcement feeds are not exposed by the QCL data, status, or season endpoints.",
-          "📝 Register": "Registration and approval workflows are not exposed here. This view does not collect or submit registration data.",
-          "Film Terminal": "Film links, clips, and video metadata are not present in the available QCL game rows.",
-          "🔮 Oracle Predictor": "Prediction simulation inputs and outcomes are not exposed by the documented QCL endpoints.",
-          "📈 Card Market": "Market listings, prices, and transactions are not exposed by the QCL data endpoint.",
-          "🎴 Qwiks TCG": "Qwiks TCG inventory and card actions remain in the existing QTCG Activity.",
-          "💬 Discord": "Discord messages and feed content are not exposed by the documented QCL endpoints.",
-          "🏆 Playoffs": "Returned fields do not identify playoff rounds, seeds, series, or bracket progression. A bracket cannot be computed from these rows."
-        };
-        if (unsupported[page]) {
-          content = unavailableView(page === "🏆 Playoffs" ? "Postseason structure unavailable" : "Unavailable with current API", unsupported[page], page === "🎴 Qwiks TCG");
-          copy = page === "🏆 Playoffs"
-            ? "Game results may be available, but this endpoint does not identify which games belong to a playoff series."
-            : "This listed destination has no backing feed among the documented QCL endpoints.";
-        } else if (["🎮 QTCG Desk", "🧢 Draft Room", "🗂 My QTCG Binder", "👤 My Profile", "🎁 Open Packs", "🃏 Player Cards"].includes(page)) {
-          const explanation = page === "🧢 Draft Room"
-            ? "Draft operations, controls, and current-pick authorization remain in the existing QTCG Activity. This page does not change draft rules."
-            : "This QTCG feature remains in the existing Activity; QCL endpoints do not expose its collection, balance, profile, or pack state.";
-          content = unavailableView("Continue in QTCG Activity", explanation, true);
-          copy = "QTCG desk link preserved. Existing Activity controls and draft behavior are unchanged.";
-        } else if (page === "🏠 League Home & Awards" || page === "📱 Mobile Hub") {
+        if (page === "🏠 League Home & Awards" || page === "📱 Mobile Hub") {
           content = viewMetricGrid([
             metric("Returned rows", rows.length.toLocaleString(), "QCL response"),
             metric("Games", gameCount(rows).toLocaleString(), "unique game identifiers"),
@@ -732,17 +810,17 @@
           ]) + `<div class="view-split">${viewBlock("Stat leaders", ["Category", "Leader", "Team", "Per game"], commonLeaders, "No numeric player box-score values were returned.")}${viewBlock("Team results", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows.slice(0, 8), "No team game rows are available.")}</div>`;
           copy = "League overview computed from returned game rows. Statistical leaders are not official award decisions.";
         } else if (page === "🏅 Awards & Rewards") {
-          content = `<div class="view-note"><strong>Stat leaders only.</strong> Award ballots, official decisions, and reward balances are not included in the QCL game-row API.</div>${viewBlock("Selected-feed leaders", ["Category", "Player", "Team", "Average"], commonLeaders, "No numeric player box-score values were returned.")}`;
-          copy = "Leader values are calculated from PTS, REB, AST, STL, and BLK. No award winner is inferred.";
+          content = `${comingSoonNote("Official award voting, decisions, and reward balances are not available yet.")}${viewBlock("Selected-feed leaders", ["Category", "Player", "Team", "Average"], commonLeaders, "No numeric player box-score values were returned.")}`;
+          copy = "Stat leaders are available from the feed. Official awards and rewards are coming soon.";
         } else if (page === "🏆 Power Rankings & SOS") {
           content = viewBlock("Team performance · sorted by win rate, then PPG", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows, "No team game rows are available.");
           content += '<p class="view-note">SOS is mean opponent win percentage from teams sharing Game_ID values. It remains unavailable if opponents cannot be paired.</p>';
           copy = "Team ranking derives from distinct team/game rows; SOS is calculated only where shared game IDs identify opponents.";
         } else if (["🏢 Franchise Hub", "🛡️ League Teams", "🏢 GM Desk"].includes(page)) {
-          content = `<div class="view-actions"><span class="eyebrow">${page === "🏢 GM Desk" ? "GM VIEW · APPROVED ROLE" : "TEAM RESULTS · SELECTED FEED"}</span></div>${viewBlock("Team results", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows, "No team names or results were returned for this selection.")}`;
+          content = `<div class="view-actions"><span class="eyebrow">${page === "🏢 GM Desk" ? "GM VIEW · APPROVED ROLE" : "TEAM RESULTS · SELECTED FEED"}</span></div>${viewBlock("Team results", ["Team", "W", "L", "Win %", "PPG", "SOS"], teamRows, "No team names or results were returned for this selection.")}${comingSoonNote("Roster management and team actions are coming soon. Results on this page are read-only.")}`;
           copy = page === "🏢 GM Desk"
-            ? `GM desk visibility is controlled by signed QCL status. Team results derive from ${rows.length} returned rows; management actions are not exposed.`
-            : "Team records and point averages are computed from selected QCL rows. No roster-management action is implied.";
+            ? `GM desk visibility is controlled by signed QCL status. Team results derive from ${rows.length} returned rows; management actions are coming soon.`
+            : "Team records and point averages are available now. Roster management is coming soon.";
         } else if (["🔦 Player Spotlight", "🗃️ Full Player Database", "🌌 Player Galaxy", "👥 Players Desk"].includes(page)) {
           const shown = page === "🔦 Player Spotlight" ? players.slice(0, 10) : players;
           content = page === "🔦 Player Spotlight" && players[0]
@@ -753,7 +831,8 @@
               metric("RPG / APG", `${formatNumber(players[0].rpg)} / ${formatNumber(players[0].apg)}`, "REB / AST per game")
             ]) : "";
           content += viewBlock(page === "🔦 Player Spotlight" ? "Scoring leaders" : "Player statistics", ["Player", "Team", "GP", "PPG", "RPG", "APG", "SPG", "BPG"], playerTable(shown), "No player rows are present in this feed.");
-          if (page === "👥 Players Desk") content += '<p class="view-note">Player desk visibility is supplied by signed status. The API does not identify the signed-in player, so no personal profile is asserted.</p>';
+          if (page === "🌌 Player Galaxy") content += comingSoonNote("An interactive player map is coming soon. The QCL feed has no location data, so the table currently shows statistics only.");
+          if (page === "👥 Players Desk") content += comingSoonNote("A personal player profile is coming soon. This view shows league-wide results and does not infer the signed-in player's identity.");
           copy = page === "🌌 Player Galaxy"
             ? "Player index from selected rows. The QCL data feed has no spatial coordinates for a star map."
             : page === "👥 Players Desk"
@@ -774,8 +853,8 @@
           content = controls + details;
           copy = "Direct records use only teams with shared Game_ID rows; a matchup is never inferred from labels alone.";
         } else if (page === "🧪 Lineup Lab") {
-          content = `${viewBlock("Player performance comparison", ["Player", "Team", "GP", "PPG", "RPG", "APG", "SPG", "BPG"], playerTable(players), "No player stat rows are available.")}<p class="view-note">This is a statistical comparison from returned rows. No saved lineup, optimizer, or lineup validation API is exposed.</p>`;
-          copy = "Compare player production in the selected feed. No lineup is saved or recommended without a lineup-specific endpoint.";
+          content = `${viewBlock("Player performance comparison", ["Player", "Team", "GP", "PPG", "RPG", "APG", "SPG", "BPG"], playerTable(players), "No player stat rows are available.")}${comingSoonNote("Saved lineups, lineup optimization, and validation are coming soon. The table is a statistical comparison only.")}`;
+          copy = "Player comparisons are available now. Saved lineups and lineup tools are coming soon.";
         } else if (page === "🥊 Rivalry Corner") {
           const rivalries = matchups.filter((match) => match.games > 1).map((match) => [match.a, match.b, match.games, `${match.aWins}-${match.bWins}`, match.pointsSeen ? `${formatNumber(match.aPoints / match.games)} / ${formatNumber(match.bPoints / match.games)}` : "—"]);
           content = viewBlock("Repeat matchups · 2 or more paired games", ["Team A", "Team B", "Games", "A-B record", "Avg points"], rivalries, "No repeat matchups were found. Counts require repeated shared Game_ID rows.");
@@ -804,16 +883,16 @@
             const count = rows.filter((row) => String(field(row, "Season")) === String(season.season_number) && String(field(row, "Game Edition")) === String(season.game_edition)).length;
             return [season.season_label || `Season ${season.season_number}`, season.game_edition, season === active ? "Active" : "Archived", count.toLocaleString()];
           });
-          content = `${viewBlock("Season archive · counts from returned rows", ["Season", "Edition", "Status", "Rows"], archiveRows, "No active or closed seasons are listed for this edition.")}<p class="view-note">Archive CSV paths are not exposed as downloads. Counts reflect the current QCL data response.</p>`;
-          copy = "Season entries come from signed status metadata; counts are computed from the selected edition's data rows.";
+          content = `${viewBlock("Season archive · counts from returned rows", ["Season", "Edition", "Status", "Rows"], archiveRows, "No active or closed seasons are listed for this edition.")}${comingSoonNote("Archive CSV downloads are coming soon. The table shows season status and row counts only.")}`;
+          copy = "Season entries and row counts are available now. Archive downloads are coming soon.";
         } else if (page === "📖 Record Book & Milestones") {
           const records = ["PTS", "REB", "AST", "STL", "BLK"].map((stat) => {
             const candidates = rows.map((row) => ({ row, value: numeric(field(row, stat)) })).filter((item) => item.value !== null).sort((a, b) => b.value - a.value);
             const lead = candidates[0];
             return lead ? [stat, lead.value, itemName(lead.row) || "—", teamName(lead.row) || "—", field(lead.row, "Game_ID") || "—"] : null;
           }).filter(Boolean);
-          content = `${viewBlock("Highest single-row values", ["Stat", "Value", "Player/Team", "Team", "Game ID"], records, "No numeric box-score values are available.")}<p class="view-note">These are maxima in the current response, not certified all-time records unless all seasons are selected.</p>`;
-          copy = "Milestones derive directly from returned box-score values. Select All seasons to include available history for this edition.";
+          content = `${viewBlock("Highest single-row values", ["Stat", "Value", "Player/Team", "Team", "Game ID"], records, "No numeric box-score values are available.")}${comingSoonNote("Certified all-time records and milestone tracking are coming soon. These are the highest values in the selected response.")}`;
+          copy = "Highest values are available from the selected response. Certified records and milestone tracking are coming soon.";
         } else {
           content = unavailableView("Page-specific data unavailable", "The documented QCL endpoints do not provide data for this view.");
           copy = "No page-specific content can be grounded in the available endpoint contract.";
@@ -826,6 +905,7 @@
         if (state.loadingData) { state.dataRequestPending = true; return; }
         state.loadingData = true;
         state.dataError = "";
+        state.dataSessionRequired = false;
         dataStatus.textContent = "Loading league data…";
         renderTable();
         renderPage();
@@ -846,16 +926,21 @@
           state.headers = [];
           state.rows = [];
           state.dataError = error.message;
-          dataStatus.textContent = `Could not load league data: ${error.message}`;
+          state.dataSessionRequired = state.statusSessionRequired || isSessionFailure(error);
+          dataStatus.textContent = state.dataSessionRequired
+            ? "QCL session required · open QTCG Activity to connect"
+            : `Could not load league data: ${error.message}`;
           $("#tableMeta").textContent = "FEED UNAVAILABLE";
           $("#dataRegion").setAttribute("aria-busy", "false");
-          $("#dataRegion").innerHTML = `<div class="empty-state error"><strong>League feed unavailable</strong><p>${esc(error.message)} Check the session or server, then retry.</p><button type="button" data-retry>Retry data</button></div>`;
+          $("#dataRegion").innerHTML = state.dataSessionRequired
+            ? '<div class="empty-state error"><strong>QCL session required</strong><p>Open QTCG Activity, then return here. This page uses the existing signed session.</p><a class="view-link" href="/activity">Open QTCG Activity</a><br><button type="button" data-retry>Retry data</button></div>'
+            : `<div class="empty-state error"><strong>League feed unavailable</strong><p>${esc(error.message)} Check the server, then retry.</p><button type="button" data-retry>Retry data</button></div>`;
           $("#rowCount").innerHTML = "<strong>—</strong> rows";
           return;
         } finally {
           state.loadingData = false;
           state.dataReady = true;
-          if (state.rows.length === 0 && !dataStatus.textContent.startsWith("Could not")) renderTable();
+          if (state.rows.length === 0 && !state.dataError) renderTable();
           renderPage();
           if (state.dataRequestPending) {
             state.dataRequestPending = false;
@@ -870,11 +955,17 @@
         return PAGES.slice(0, 29).includes(page);
       }
       function renderNavigation() {
-        $("#pageNav").innerHTML = PAGES.slice(0, 29).map((page) => `<button type="button" data-page="${esc(page)}" ${page === state.page ? 'aria-current="page"' : ""}>${esc(page)}</button>`).join("");
+        $("#pageNav").innerHTML = PAGES.slice(0, 29).map((page) => {
+          const isComingSoon = Object.prototype.hasOwnProperty.call(COMING_SOON_PAGES, page);
+          return `<button type="button" data-page="${esc(page)}" ${page === state.page ? 'aria-current="page"' : ""}><span>${esc(page)}</span>${isComingSoon ? '<span class="nav-status">Soon</span>' : ""}</button>`;
+        }).join("");
         const rolePages = [];
         if (state.status?.can_see_gm_desk === true) rolePages.push("🏢 GM Desk");
         if (state.status?.can_see_players_desk === true) rolePages.push("👥 Players Desk");
-        $("#mobilePageSelect").innerHTML = [...PAGES.slice(0, 29), ...rolePages].map((page) => `<option value="${esc(page)}">${esc(page)}</option>`).join("");
+        $("#mobilePageSelect").innerHTML = [...PAGES.slice(0, 29), ...rolePages].map((page) => {
+          const label = Object.prototype.hasOwnProperty.call(COMING_SOON_PAGES, page) ? `${page} · Coming soon` : page;
+          return `<option value="${esc(page)}">${esc(label)}</option>`;
+        }).join("");
         $("#mobilePageSelect").value = state.page;
       }
       function selectPage(page) {
