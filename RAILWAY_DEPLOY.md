@@ -30,7 +30,6 @@ GITHUB_REPO=owner/repository
 GITHUB_BRANCH=main
 OWNER_ID=your_discord_user_id
 QCL_SIGNING_SECRET=stable_random_session_signing_secret
-QCL_ARCHIVE_FOLDER_ID=google_drive_archive_folder_id
 ```
 
 Optional:
@@ -41,16 +40,14 @@ POOL_PATH=fantasy_market.json
 DRAFT_PATH=qcl_draft_activity.json
 PACK_COST=10
 DRAFT_ADMIN_IDS=your_discord_user_id
-QCL_ACTIVE_FOLDER_ID=google_drive_active_workbooks_folder_id
 ```
 
-Store `GOOGLE_SERVICE_ACCOUNT_JSON` (or `GOOGLE_SERVICE_ACCOUNT_JSON_B64`) as a
-private Railway variable. Never commit the service-account document. Share the
-active QCL workbook and the archive folder with that service account. The
-archive folder must be on the same Shared Drive as the workbook; grant it
-permission to edit the workbook, create files in the active folder, and move
-the closed workbook into the archive folder. `QCL_ACTIVE_FOLDER_ID` is optional;
-when omitted, the next workbook is created beside the current one.
+The season API reads only the configured `Raw Data` CSV export from the
+existing QCL spreadsheet. It does not need a Google service-account JSON,
+Google API credentials, or Drive folder IDs. Keep the `Raw Data` CSV export
+readable and keep the workbook's private `Registry` tab private; the API never
+reads or returns that tab. The QCL bot continues writing through its existing
+Sheet workflow.
 
 The GitHub token must have Contents read/write access to both the repository
 named by `GITHUB_REPO` (QTCG Activity saves and draft state) and
@@ -82,23 +79,24 @@ Developer Portal. The app derives this callback from Railway's public-domain
 variable. Set `QCL_STREAMLIT_REDIRECT_URI` in Railway if you use a different
 custom domain or need to override the callback.
 
-The public QCL repository contains `qcl_season_config.json`. It starts with
-2K26 Season One as the active workbook and 2K27 Season One as the next
-workbook. Closing a season commits its CSV snapshot to QCL, archives the
-closed workbook in Drive, and creates a fresh workbook for the configured next
-edition and season. Later closures increment the season number.
+The public QCL repository contains `qcl_season_config.json` and the CSV season
+archives. Closing a season first commits the current CSV snapshot to QCL and
+records a pending rollover. The commissioner then clears populated rows below
+the header in the same `Raw Data` sheet; the Sheet URL and header remain
+unchanged. The admin page links to that tab and verifies the export has no data
+rows before it advances the active and next season settings. If the archive
+write fails, the sheet is not cleared or advanced.
 
 The embedded app reads stats through QTCG's internal
 `/api/qcl/public-data` endpoint. This public read-only endpoint returns only the
-active `Raw Data` tab. Drive copies do not retain the original workbook's
-file-level sharing, so this avoids making the entire workbook—and its Registry
-tab—public. The QCL app keeps its direct CSV feed as a legacy fallback when the
+active `Raw Data` CSV export. It does not expose the workbook or its Registry
+tab. The QCL app keeps its direct CSV feed as a legacy fallback when the
 internal endpoint is not configured.
 
 Keep the `Raw Data` header row intact and include distinct `Game Edition` and
-`Season` columns. The close action validates that all populated rows match the
-active edition and season before it changes Drive files or the config. The
-Registry tab is not cleared.
+`Season` columns. The archive action checks that populated rows match the
+active edition and season. Blank `Player/Team` and `Type` cells are preserved
+because they occur in valid rows displayed by the QCL source app.
 
 For deployment checks, also open:
 

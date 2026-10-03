@@ -146,6 +146,7 @@
     .season-actions { margin-top: 12px; }
     .season-actions button { width: 100%; border-color: #ff7f8d55; background: #ff7f8d12; color: #ffb4bd; }
     .season-actions button:hover:not(:disabled) { border-color: var(--bad); background: #ff7f8d20; }
+    .season-action-link { display: block; margin: 9px 0; color: var(--accent); font-size: 12px; text-align: center; text-decoration: underline; }
     .inline-note { min-height: 17px; margin: 8px 0 0; color: var(--muted); font-size: 10px; }
     .inline-note.error { color: var(--bad); }
     .role-note { margin-top: 10px; padding: 9px; border-left: 2px solid var(--accent); background: #9bb8ff0b; color: #b8c7e0; font-size: 10px; }
@@ -315,7 +316,9 @@
             <p id="seasonCopy" class="season-copy" aria-live="polite">Loading signed season status…</p>
             <ul id="missingConfiguration" class="missing-list" hidden></ul>
             <div id="seasonActions" class="season-actions" hidden>
-              <button id="closeSeasonButton" type="button">Close season</button>
+              <button id="closeSeasonButton" type="button">Archive season CSV</button>
+              <a id="openRawDataSheet" class="season-action-link" target="_blank" rel="noopener noreferrer" hidden>Open Raw Data sheet</a>
+              <button id="verifyClearButton" type="button" hidden>Verify clear and start next season</button>
               <p id="seasonActionNote" class="inline-note" role="status"></p>
             </div>
           </aside>
@@ -327,11 +330,11 @@
   <dialog id="closeDialog" aria-labelledby="dialogTitle" aria-describedby="dialogCopy">
     <div class="dialog-body">
       <p class="eyebrow">Commissioner action</p>
-      <h2 id="dialogTitle">Close this season?</h2>
-      <p id="dialogCopy">This closes, exports, and archives the current season and creates the next active workbook. Continue only when league operations are ready.</p>
+      <h2 id="dialogTitle">Archive this season?</h2>
+      <p id="dialogCopy">This saves the current Raw Data CSV to QCL on GitHub. After the archive is confirmed, clear the populated rows below the header in the same Raw Data sheet, then verify the clear here. The sheet link and header stay in place.</p>
       <div class="dialog-actions">
         <button id="cancelClose" type="button">Cancel</button>
-        <button id="confirmClose" class="danger-button" type="button">Close season</button>
+        <button id="confirmClose" class="danger-button" type="button">Archive CSV</button>
       </div>
     </div>
   </dialog>
@@ -429,11 +432,14 @@
       function renderStatus() {
         const status = state.status;
         const hasStatus = Boolean(status);
+        const pending = status?.pending_rollover && typeof status.pending_rollover === "object";
         $("#activeSeason").textContent = hasStatus ? seasonLabel(status.active) : "—";
         $("#nextSeason").textContent = hasStatus ? seasonLabel(status.next) : "—";
         $("#seasonCopy").textContent = !hasStatus
           ? (state.statusError || "Season status unavailable. Retry to check signed league permissions.")
-          : status.ready === true
+          : pending
+            ? "The season CSV is archived. Clear the populated rows below the Raw Data header, then verify to activate the next season."
+            : status.ready === true
             ? "Configuration is ready for the next season transition."
             : "Season transition is not ready. Resolve the listed setup items first.";
         const missing = Array.isArray(status?.missing_configuration) ? status.missing_configuration : [];
@@ -441,8 +447,17 @@
         $("#missingConfiguration").hidden = !missing.length;
         const commissioner = status?.is_commissioner === true;
         $("#seasonActions").hidden = !commissioner;
+        $("#closeSeasonButton").hidden = Boolean(pending);
         $("#closeSeasonButton").disabled = status?.ready !== true || state.loadingStatus;
-        $("#closeSeasonButton").title = status?.ready === true ? "Close and archive the active season" : "Season status reports that required configuration is not ready";
+        $("#closeSeasonButton").title = status?.ready === true ? "Archive the active Raw Data CSV" : "Season status reports that required configuration is not ready";
+        const sheetLink = $("#openRawDataSheet");
+        sheetLink.hidden = !pending;
+        $("#verifyClearButton").hidden = !pending;
+        $("#verifyClearButton").disabled = !pending || state.loadingStatus;
+        if (pending && status?.active?.spreadsheet_id) {
+          const gid = encodeURIComponent(status.active.sheet_gid ?? 0);
+          sheetLink.href = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(status.active.spreadsheet_id)}/edit#gid=${gid}`;
+        }
         $("#gmDeskButton").hidden = status?.can_see_gm_desk !== true;
         $("#playersDeskButton").hidden = status?.can_see_players_desk !== true;
         $("#roleDeskNav").hidden = status?.can_see_gm_desk !== true && status?.can_see_players_desk !== true;
@@ -881,14 +896,33 @@
       async function closeSeason() {
         const button = $("#confirmClose");
         button.disabled = true;
-        $("#seasonActionNote").textContent = "Closing season…";
+        $("#seasonActionNote").textContent = "Saving the season CSV to GitHub…";
         $("#seasonActionNote").classList.remove("error");
         try {
           if (state.status?.is_commissioner !== true) throw new Error("Commissioner permission is not present in signed season status.");
           if (state.status?.ready !== true) throw new Error("Season status does not report that configuration is ready.");
-          await request("/api/qcl/seasons/close", { method: "POST", body: {} });
+          const result = await request("/api/qcl/seasons/close", { method: "POST", body: {} });
           $("#closeDialog").close();
-          $("#seasonActionNote").textContent = "Season closed and archived.";
+          $("#seasonActionNote").textContent = `${result.rows_archived} rows archived to ${result.archived_csv}. Clear Raw Data rows below the header, then verify.`;
+          await loadStatus();
+          await loadData();
+        } catch (error) {
+          $("#seasonActionNote").textContent = error.message;
+          $("#seasonActionNote").classList.add("error");
+        } finally {
+          button.disabled = false;
+        }
+      }
+      async function verifyClear() {
+        const button = $("#verifyClearButton");
+        button.disabled = true;
+        $("#seasonActionNote").textContent = "Checking that Raw Data contains only its header…";
+        $("#seasonActionNote").classList.remove("error");
+        try {
+          if (state.status?.is_commissioner !== true) throw new Error("Commissioner permission is not present in signed season status.");
+          if (!state.status?.pending_rollover) throw new Error("There is no archived season waiting for clear verification.");
+          const result = await request("/api/qcl/seasons/complete", { method: "POST", body: {} });
+          $("#seasonActionNote").textContent = `Clear verified. ${seasonLabel(result.active)} is now active.`;
           await loadStatus();
           const active = state.status?.active;
           if (active?.game_edition) state.edition = String(active.game_edition);
@@ -937,6 +971,7 @@
       });
       $("#dataRegion").addEventListener("click", (event) => { if (event.target.closest("[data-retry]")) loadData(); });
       $("#closeSeasonButton").addEventListener("click", () => $("#closeDialog").showModal());
+      $("#verifyClearButton").addEventListener("click", verifyClear);
       $("#cancelClose").addEventListener("click", () => $("#closeDialog").close());
       $("#confirmClose").addEventListener("click", closeSeason);
       $("#closeDialog").addEventListener("click", (event) => {
