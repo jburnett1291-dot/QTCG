@@ -53,6 +53,7 @@ GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO = os.environ.get("GITHUB_REPO", "").strip() or "jburnett1291-dot/QCL"
 BASE_DIR = Path(__file__).resolve().parent
 QCL_HUB_PATH = BASE_DIR / "qcl_hub.html"
+QCL_HOME_PATH = BASE_DIR / "qcl_home.html"
 QCL_STREAMLIT_SOURCE_DIR = Path(
     os.environ.get("QCL_STREAMLIT_SOURCE_DIR", "/opt/qcl-source")
 )
@@ -1591,20 +1592,13 @@ async def proxy_image(request):
 async def serve_qtcg(request):
     """The sole Activity document; aliases normalize in the client."""
     hub_link = (
-        '<a href="/qcl" aria-label="Open QCL League Hub" '
+        '<a href="/qcl-home" aria-label="Open the QCL Streamlit home" '
         'style="display:inline-flex;align-items:center;justify-content:center;'
         'padding:8px 12px;border-radius:9px;margin-left:6px;'
         'background:#17212b;color:#f5f8fb;font-weight:700;'
-        'text-decoration:none;border:1px solid #34404c">QCL Hub</a>'
+        'text-decoration:none;border:1px solid #34404c">QCL Home</a>'
     )
-    admin_link = (
-        '<a href="/qcl-admin" aria-label="Open QCL Season Admin" '
-        'style="display:inline-flex;align-items:center;justify-content:center;'
-        'padding:8px 12px;border-radius:9px;margin-left:6px;'
-        'background:#17212b;color:#f5f8fb;font-weight:700;'
-        'text-decoration:none;border:1px solid #34404c">Season Admin</a>'
-    )
-    html = SPA_HTML.replace("</nav>", hub_link + admin_link + "</nav>", 1)
+    html = SPA_HTML.replace("</nav>", hub_link + "</nav>", 1)
     return web.Response(text=html, content_type="text/html",
                         headers={"Cache-Control": "no-store, max-age=0"})
 
@@ -1871,6 +1865,14 @@ async def serve_qcl_hub(request):
     )
 
 
+async def serve_qcl_home(request):
+    return web.Response(
+        text=QCL_HOME_PATH.read_text(encoding="utf-8"),
+        content_type="text/html",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
 async def serve_resources(request):
     return await serve_qtcg(request)
 
@@ -1965,6 +1967,7 @@ app.router.add_options("/api/img", proxy_image)
 # Canonical API routes above must remain ahead of this static catch-all.
 # Every Activity entry point serves the exact same SPA document.
 app.router.add_get("/", serve_qtcg)
+app.router.add_get("/activity", serve_qtcg)
 app.router.add_get("/qtcg", serve_qtcg)
 app.router.add_get("/draft", serve_qtcg)
 app.router.add_get("/war-room", serve_qtcg)
@@ -1972,6 +1975,8 @@ app.router.add_get("/warroom", serve_qtcg)
 app.router.add_get("/warroom/war-room", serve_qtcg)
 app.router.add_get("/resources", serve_resources)
 app.router.add_get("/diagnostics", serve_diagnostics)
+app.router.add_get("/qcl-home", serve_qcl_home)
+app.router.add_get("/qcl-home/", serve_qcl_home)
 app.router.add_get("/qcl-admin", serve_qcl_hub)
 app.router.add_get("/qcl-admin/", serve_qcl_hub)
 app.router.add_route("*", "/qcl", proxy_qcl_streamlit)

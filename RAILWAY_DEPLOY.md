@@ -67,11 +67,13 @@ Its sidebar, styles, pages, and interactions therefore come from the QCL source
 app rather than a separate QTCG reimplementation. When QCL's `main` changes,
 update `QCL_SOURCE_REF` to the new commit and redeploy QTCG.
 
-The existing QTCG-based season administration page remains available at
-`/qcl-admin`, linked from the Activity navigation. Open the Activity on the
-same hostname first to establish its signed session; the admin page reuses that
-session and does not add a second login. The season-close action is limited to
-IDs in `DRAFT_ADMIN_IDS`.
+The QTCG front page and its Activity tabs remain the default. Its single QCL
+entry opens `/qcl-home`, a QCL-styled frame around the original Streamlit app;
+the frame includes a return link to `/activity`. Season administration remains
+at `/qcl-admin`, reachable from the QCL header rather than as a second primary
+navigation entry. Open the Activity on the same hostname first to establish its
+signed session; the admin page reuses that session and does not add a second
+login. The season-close action is limited to IDs in `DRAFT_ADMIN_IDS`.
 
 For QCL's optional Discord login, register
 `https://<RAILWAY_PUBLIC_DOMAIN>/qcl/` as an OAuth redirect URI in the Discord
@@ -101,6 +103,7 @@ For deployment checks, also open:
 
 ```text
 https://YOUR-RAILWAY-DOMAIN/qcl
+https://YOUR-RAILWAY-DOMAIN/qcl-home
 https://YOUR-RAILWAY-DOMAIN/qcl-admin
 https://YOUR-RAILWAY-DOMAIN/api/qcl/seasons/status
 ```
