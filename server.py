@@ -1791,7 +1791,10 @@ async def serve_qtcg(request):
 
 async def serve_activity(request):
     """Open the shared QCL app while preserving only host-supplied parameters."""
-    destination = request.rel_url.with_path(f"{QCL_STREAMLIT_BASE_PATH}/")
+    destination = f"{QCL_STREAMLIT_BASE_PATH}/"
+    raw_query = request.rel_url.raw_query_string
+    if raw_query:
+        destination = f"{destination}?{raw_query}"
     return web.Response(
         status=302,
         headers={
